@@ -1,0 +1,13 @@
+services:
+  bookroom:
+    build: .
+    container_name: bookroom
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./library:/library
+      - ./data:/data
+    environment:
+      - ADMIN_PASSWORD=admin123     # 首次启动创建 admin 账户的初始密码
+      - TZ=Asia/Shanghai
+    restart: unless-stopped

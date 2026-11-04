@@ -1,0 +1,9 @@
+# fastapi pinned to the 0.115 stable line (0.116+ forces opentelemetry-api>=1.44
+# which conflicts with common global tooling; 0.115 fully covers this project)
+fastapi>=0.115,<0.116
+uvicorn[standard]>=0.30
+pypdf>=4.2
+pymupdf>=1.24
+httpx>=0.27
+rarfile>=4.2
+python-multipart>=0.0.9

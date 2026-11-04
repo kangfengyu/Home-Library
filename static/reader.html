@@ -1,0 +1,1753 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>阅读器 · 家庭图书馆</title>
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@500;600;700&family=Manrope:wght@500;600;700&display=swap" rel="stylesheet"/>
+<style>
+  :root { --accent:#C28E5C; --accent-deep:#9A6B3A; }
+  body { --bg:#FCF9F2; --panel:#FFFFFF; --panel2:#F8F5EE; --line:#EAE5D9; --line2:#DDD6C6;
+         --txt:#1C1C18; --sub:#6B6E74; --ink-deep:#1E293B; }
+  body.night { --bg:#1C1917; --panel:#262220; --panel2:#211D1B; --line:#3B342C; --line2:#4A4138;
+               --txt:#EDE6D9; --sub:#A89F90; --ink-deep:#151210; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt);
+         font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif; overflow:hidden;
+         transition:background .25s, color .25s; }
+  .hide { display:none !important; }
+  button { font-family:inherit; }
+
+  header { position:fixed; top:0; left:0; right:0; height:52px; z-index:50; display:flex;
+           align-items:center; gap:8px; padding:0 14px; background:color-mix(in srgb, var(--panel) 88%, transparent);
+           backdrop-filter:blur(10px); border-bottom:1px solid var(--line); }
+  .btn { padding:6px 11px; border-radius:6px; border:1px solid var(--line); background:var(--panel);
+         color:var(--txt); font-size:13px; cursor:pointer; white-space:nowrap; transition:.15s; }
+  .btn:hover { border-color:var(--accent); color:var(--accent-deep);
+               box-shadow:0 8px 24px -4px rgba(30,41,59,.08), 0 2px 6px -1px rgba(194,142,92,.10); }
+  body.night .btn:hover { color:var(--accent); }
+  .btn.on { background:#1E293B; border-color:#1E293B; color:#FDFBF7; }
+  body.night .btn.on { background:var(--accent); border-color:var(--accent); color:#15130F; }
+  .btn.on:hover { opacity:.92; }
+  .btn.icon { width:32px; padding:6px 0; text-align:center; }
+  #title { flex:1; min-width:0; font-family:"Noto Serif SC",serif; font-size:14.5px; font-weight:600;
+           white-space:nowrap; overflow:hidden; text-overflow:ellipsis; letter-spacing:.02em; }
+  #pos { font-family:Manrope,sans-serif; font-size:11.5px; color:var(--sub); white-space:nowrap; }
+  #eta { font-family:Manrope,sans-serif; font-size:11.5px; color:var(--sub); white-space:nowrap; }
+
+  @media (max-width: 640px) {
+    header { gap:5px; padding:0 8px; height:46px; }
+    main { top:46px; }
+    .btn { padding:5px 8px; font-size:12px; border-radius:7px; }
+    .btn.icon { width:28px; }
+    #title { font-size:12px; }
+    #controls { overflow-x:auto; max-width:52vw; scrollbar-width:none; }
+    #controls::-webkit-scrollbar { display:none; }
+    #pos, #eta { font-size:10px; }
+  }
+
+  main { position:fixed; top:52px; left:0; right:0; bottom:0; }
+  #stage { width:100%; height:100%; overflow:auto; }
+  #epubRoot { width:100%; height:100%; }
+
+  /* PDF / 漫画布局：书页质感 */
+  #pagesScroll { display:flex; flex-direction:column; align-items:center; gap:14px; padding:16px; }
+  .pageBox { position:relative; background:#FDFCF8; border-radius:2px;
+             box-shadow:0 1px 2px rgba(30,41,59,.10), 0 8px 22px -6px rgba(30,41,59,.10); }
+  body.night .pageBox { background:#262220; box-shadow:0 4px 18px rgba(0,0,0,.55);
+                        border:1px solid #3B342C; }
+  body.night .pageBox canvas { filter:invert(0.90) hue-rotate(180deg) brightness(.92); }
+  .pageBox canvas { display:block; border-radius:3px; }
+  .hlLayer { position:absolute; inset:0; pointer-events:none; }
+  .hlLayer i { position:absolute; background:rgba(250,204,21,.38); mix-blend-mode:multiply;
+               border-radius:2px; }
+  .hlLayer i.flash { outline:2px solid #f59e0b; }
+  .textLayer { position:absolute; inset:0; overflow:hidden; opacity:0.25; line-height:1;
+               cursor:text; }
+  .textLayer span, .textLayer br { color:transparent; position:absolute; white-space:pre;
+               cursor:text; transform-origin:0% 0%; }
+  .textLayer ::selection { background:rgba(70,120,255,.5); }
+
+  #pageWrapH { width:100%; height:100%; display:flex; align-items:center; justify-content:center;
+               gap:10px; padding:10px; }
+  #pageWrapH canvas, #pageWrapH img { max-width:100%; max-height:100%; object-fit:contain;
+               background:#FDFCF8; border-radius:2px;
+               box-shadow:0 1px 2px rgba(30,41,59,.10), 0 8px 22px -6px rgba(30,41,59,.12); }
+  #pageWrapH img.comic { background:transparent; box-shadow:none; }
+  .zone { position:absolute; top:0; bottom:0; width:30%; z-index:10; cursor:pointer; }
+  .zone.left { left:0; } .zone.right { right:0; }
+
+  /* 抽屉（目录 / 笔记） */
+  .drawer { position:fixed; top:0; bottom:0; width:320px; z-index:60; background:var(--panel);
+            border-right:1px solid var(--line); transform:translateX(-100%); transition:transform .22s;
+            display:flex; flex-direction:column; }
+  .drawer.right { right:0; left:auto; border-right:none; border-left:1px solid var(--line);
+                  transform:translateX(100%); }
+  .drawer.open { transform:none; }
+  .drawer h3 { margin:0; padding:14px 16px; font-size:14px; border-bottom:1px solid var(--line);
+               display:flex; align-items:center; justify-content:space-between; }
+  .drawer h3 span.x { cursor:pointer; color:var(--sub); }
+  .drawer .body { overflow:auto; padding:8px 0; flex:1; }
+  #tocList a { display:block; padding:9px 16px; font-size:13px; color:var(--sub); cursor:pointer;
+               white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #tocList a:hover { color:var(--txt); background:rgba(99,102,241,.15); }
+
+  .hl-item { padding:12px 16px; border-bottom:1px solid var(--line); font-size:12.5px; }
+  .hl-item .q { background:rgba(194,142,92,.16); border-left:3px solid #C28E5C; padding:6px 9px;
+                border-radius:0 6px 6px 0; line-height:1.6; cursor:pointer; }
+  .hl-item .t { display:flex; gap:6px; margin-top:6px; color:var(--sub); align-items:flex-start; }
+  .hl-item .t .x { cursor:pointer; margin-left:auto; }
+  .hl-item .t .x:hover { color:#ef4444; }
+  .hl-item .add { display:flex; gap:6px; margin-top:8px; }
+  .hl-item .add input { flex:1; padding:6px 9px; border-radius:7px; border:1px solid var(--line);
+                background:var(--bg); color:var(--txt); font-size:12px; outline:none; }
+  .drawer-empty { padding:30px 18px; color:var(--sub); font-size:13px; text-align:center; line-height:1.8; }
+
+  /* 划线底部操作条 */
+  #selBar { position:fixed; left:50%; bottom:26px; transform:translateX(-50%); z-index:70;
+            background:color-mix(in srgb, var(--panel) 92%, transparent); backdrop-filter:blur(8px);
+            border:1px solid var(--line2); border-radius:10px;
+            box-shadow:0 24px 48px -12px rgba(15,23,42,.18); padding:10px 12px; max-width:min(620px, 92vw); }
+  #selBar .txt { font-size:12px; color:var(--sub); max-height:52px; overflow:hidden; margin-bottom:8px;
+                 line-height:1.5; }
+  #selBar textarea { width:100%; height:56px; padding:8px 10px; border-radius:8px; font-size:12.5px;
+                     border:1px solid var(--line); background:var(--bg); color:var(--txt);
+                     resize:none; outline:none; margin-top:6px; }
+  #selBar .row { display:flex; gap:8px; justify-content:flex-end; }
+
+  /* 划线悬浮浮层（显示想法） */
+  #hlTip { position:fixed; z-index:80; max-width:320px; background:var(--panel); color:var(--txt);
+           border:1px solid var(--line); border-radius:10px; box-shadow:0 8px 24px rgba(0,0,0,.3);
+           padding:10px 12px; font-size:12px; line-height:1.6; pointer-events:none; }
+  #hlTip .q { color:var(--sub); }
+  #hlTip .t { margin-top:6px; }
+  #hlTip .t b { color:var(--accent); margin-right:4px; }
+  .br-hl-flash { outline:2px solid #f59e0b; outline-offset:1px; }
+
+  #fail { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center;
+          justify-content:center; gap:14px; color:var(--sub); font-size:14px; text-align:center; padding:20px; }
+  #toast { position:fixed; bottom:26px; left:50%; transform:translateX(-50%); padding:10px 20px;
+           background:#1E293B; color:#FDFBF7; border-radius:8px; font-size:13px; z-index:99;
+           border:1px solid rgba(194,142,92,.3); }
+  body.night #toast { background:#151210; }
+  #loading { position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+             color:var(--sub); font-size:14px; }
+
+  /* ================= 云朵浮层（待解答问题，与主页同款） ================= */
+  #qCloud { position:fixed; z-index:9999; width:96px; height:68px; cursor:grab;
+            user-select:none; touch-action:none; filter:drop-shadow(0 6px 14px rgba(0,0,0,.25)); }
+  #qCloud.dragging { cursor:grabbing; }
+  #qCloud .cloud-svg { width:100%; height:100%; display:block; }
+  #qCloud .cloud-face { position:absolute; inset:0; display:flex; align-items:center;
+            justify-content:center; gap:3px; pointer-events:none; }
+  #qCloud .cloud-txt { font-family:"Noto Serif SC",serif; font-size:15px; font-weight:600;
+            color:var(--txt); letter-spacing:.1em; padding-left:.1em; }
+  #qCloud .cloud-badge { position:absolute; top:2px; right:14px; min-width:16px; height:16px;
+            border-radius:8px; background:#BA1A1A; color:#fff; font-size:10px; font-weight:700;
+            display:none; align-items:center; justify-content:center; padding:0 4px;
+            font-family:Manrope,monospace; box-shadow:0 1px 4px rgba(0,0,0,.3); }
+  #qCloud:hover .cloud-svg path { stroke-width:3; }
+  #qCloud .cloud-panel { display:none; position:absolute; top:calc(100% + 8px); left:-8px; width:300px;
+            background:var(--panel); border:1px solid var(--line2); border-radius:12px;
+            box-shadow:0 24px 48px -12px rgba(0,0,0,.5); padding:12px; cursor:default; }
+  #qCloud.open .cloud-panel { display:block; }
+  #qCloud .cloud-panel.up { top:auto; bottom:calc(100% + 8px); }
+  #qCloud .cloud-head { display:flex; align-items:center; justify-content:space-between;
+            font-size:12px; font-weight:600; color:var(--sub); padding:0 2px 8px;
+            border-bottom:1px solid var(--line); }
+  #qCloud .cloud-count { font-family:Manrope,monospace; font-size:11px; }
+  #qCloud .cloud-list { max-height:240px; overflow-y:auto; margin-top:6px; }
+  #qCloud .cloud-item { padding:7px 8px; border-radius:6px; font-size:12.5px; line-height:1.55;
+            color:var(--txt); word-break:break-word; }
+  #qCloud .cloud-item:hover { background:rgba(194,142,92,.16); }
+  #qCloud .cloud-item .ci { font-family:Manrope,monospace; font-size:10px; color:#C28E5C;
+            font-weight:700; margin-right:6px; }
+  #qCloud .cloud-none { font-size:12px; color:var(--sub); font-style:italic; padding:10px 6px; }
+  #qCloud .cloud-add { display:flex; gap:6px; margin-top:8px; padding-top:8px;
+            border-top:1px solid var(--line); }
+  #qCloud .cloud-add input { flex:1; min-width:0; padding:7px 10px; border-radius:6px;
+            border:1px solid var(--line); background:var(--panel2); color:var(--txt);
+            font-size:12.5px; outline:none; font-family:inherit; }
+  #qCloud .cloud-add input:focus { border-color:#C28E5C; }
+  #qCloud .cloud-add button { width:32px; flex:none; border:1px solid #C28E5C; background:#C28E5C;
+            color:#FDFBF7; border-radius:6px; font-size:15px; cursor:pointer; }
+  #qCloud .cloud-add button:hover { background:#D49E6E; }
+  @media (max-width: 900px) {
+    #qCloud { width:78px; height:55px; }
+    #qCloud .cloud-txt { font-size:12.5px; }
+    #qCloud .cloud-badge { min-width:14px; height:14px; font-size:9px; top:0; right:10px; }
+    #qCloud .cloud-panel { width:min(300px, calc(100vw - 24px)); }
+  }
+</style>
+</head>
+<body>
+<header>
+  <button class="btn icon" id="backBtn" title="返回书库">←</button>
+  <div id="title">…</div>
+  <div id="controls" style="display:flex; gap:6px; align-items:center;"></div>
+  <span id="eta"></span>
+  <span id="pos"></span>
+  <button class="btn icon" id="dlBtn" data-i18n-title="dl">⬇</button>
+  <button class="btn icon" id="notesBtn" data-i18n-title="notes">✒</button>
+  <button class="btn icon" id="themeBtn" title="日间 / 夜间模式">🌙</button>
+</header>
+
+<main>
+  <div id="stage"><div id="loading">加载中…</div></div>
+  <div id="fail" class="hide"></div>
+</main>
+
+<aside class="drawer" id="toc"><h3 id="tocH3El"><span id="tocH3Text">目录</span> <span class="x" onclick="document.getElementById('toc').classList.remove('open')">✕</span></h3>
+  <div class="body" id="tocList"></div></aside>
+
+<aside class="drawer right" id="noteDrawer"><h3 id="notesDrawerTitle"><span id="notesTitleText">本书笔记</span> <span class="x" onclick="document.getElementById('noteDrawer').classList.remove('open')">✕</span></h3>
+  <div class="body" id="noteList"></div></aside>
+
+<div id="selBar" class="hide">
+  <div class="txt"></div>
+  <textarea id="selThought" class="hide"></textarea>
+  <div class="row">
+    <button class="btn" id="selCancel">取消</button>
+    <button class="btn" id="selSave">✂ 仅划线</button>
+    <button class="btn" id="selSaveThought">💬 划线并记想法</button>
+  </div>
+</div>
+
+<div id="toast" class="hide"></div>
+<div id="hlTip" class="hide"></div>
+
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const params = new URLSearchParams(location.search);
+const bookId = params.get('id');
+const noteAnchor = params.get('note');      // 从笔记页跳转
+let book = null, me = null;
+let notes = [];                              // 当前书划线（含 thoughts）
+
+/* ---------- 语言（与首页共享 br-lang） ---------- */
+let LANG = 'zh';
+try { LANG = localStorage.getItem('br-lang') === 'en' ? 'en' : 'zh'; } catch (e) {}
+const STR = {
+  zh: {
+    toc:'目录', tocTip:'章节目录', prev:'上一页', next:'下一页', fontDown:'缩小字体',
+    fontUp:'放大字体', double:'双页', single:'单页', toDouble:'点击切换为双页（当前：单页）',
+    toSingle:'点击切换为单页（当前：双页）', toScroll:'点击切换为上下滚动（当前：左右翻页）',
+    toPaged:'点击切换为左右翻页（当前：上下滚动）', scroll:'上下', paged:'左右',
+    zoomIn:'放大', zoomOut:'缩小', dl:'下载原文件到本机', notes:'本书划线与想法',
+    themeLight:'切换为日读（宣纸）', themeDark:'切换为夜读（乌木）',
+    resumed:'已定位到上次阅读位置', notLogin:'未登录：进度与划线不会被保存',
+    scanned:'检测到扫描版 PDF（无文字层）：无法划线，仅支持阅读与进度记录',
+    night:'已切换夜读 · 乌木', day:'已切换日读 · 宣纸',
+    hlSaved:'已划线', hlThought:'划线与想法已保存', recoSaved:'想法已保存',
+    dlPack:b=>`正在打包《${b}》…`, dlDone:b=>'已开始保存：'+b, dlErr:'下载失败：',
+    pdfFail:'PDF 渲染库（PDF.js）加载失败，请检查网络后刷新重试',
+    epubFail:'EPUB 渲染库（epub.js + JSZip）加载失败，请检查网络后刷新重试',
+    parseFail:'EPUB 解析失败：', pdfLoad:'PDF 加载失败：', netErr:'网络错误：',
+    noBook:'书籍不存在', comicNone:'压缩包内没有找到图片',
+    firstPage:'已经是第一页了', lastPage:'已经是最后一页了',
+    zoom:b=>'缩放 '+Math.round(b*100)+'%',
+    selCancel:'取消', selOnly:'✂ 仅划线', selPlus:'💬 划线并记想法', selSave:'💾 保存划线+想法',
+    selThinkPh:'写下这一段的想法…（可留空，仅划线）',
+    notesTitle:'本书笔记', notesEmpty:'还没有划线<br>阅读时选中一段文字即可划线',
+    addThinkPh:'补充想法…', addThink:'记', goLogin:'去首页登录',
+    tocH3:'目录', del:'删除', page:'页',
+  },
+  en: {
+    toc:'Contents', tocTip:'Table of contents', prev:'Previous', next:'Next', fontDown:'Smaller text',
+    fontUp:'Larger text', double:'2-up', single:'1-up', toDouble:'Switch to 2-up (current: 1-up)',
+    toSingle:'Switch to 1-up (current: 2-up)', toScroll:'Switch to vertical scroll (current: paged)',
+    toPaged:'Switch to paged (current: scroll)', scroll:'Scroll', paged:'Paged',
+    zoomIn:'Zoom in', zoomOut:'Zoom out', dl:'Download this book', notes:'Highlights & thoughts',
+    themeLight:'Switch to day (paper)', themeDark:'Switch to night (ebony)',
+    resumed:'Resumed to your last position', notLogin:'Not signed in: progress & highlights won\'t be saved',
+    scanned:'Scanned PDF detected (no text layer): highlighting unavailable',
+    night:'Night reading · ebony', day:'Day reading · paper',
+    hlSaved:'Highlighted', hlThought:'Highlight & thought saved', recoSaved:'Thought saved',
+    dlPack:b=>`Packing “${b}”…`, dlDone:b=>'Saving: '+b, dlErr:'Download failed: ',
+    pdfFail:'PDF engine (PDF.js) failed to load — check your network and refresh',
+    epubFail:'EPUB engine (epub.js + JSZip) failed to load — check your network and refresh',
+    parseFail:'Failed to parse EPUB: ', pdfLoad:'Failed to load PDF: ', netErr:'Network error: ',
+    noBook:'Book not found', comicNone:'No images found in the archive',
+    firstPage:'Already at the first page', lastPage:'Already at the last page',
+    zoom:b=>'Zoom '+Math.round(b*100)+'%',
+    selCancel:'Cancel', selOnly:'✂ Highlight', selPlus:'💬 Highlight & add thought', selSave:'💾 Save',
+    selThinkPh:'Your thoughts on this passage… (optional)',
+    notesTitle:'Highlights', notesEmpty:'No highlights yet<br>Select text while reading to highlight',
+    addThinkPh:'Add a thought…', addThink:'Add', goLogin:'Sign in',
+    tocH3:'Contents', del:'Delete', page:'Page',
+  },
+};
+function t(k) { return (STR[LANG] && STR[LANG][k]) || STR.zh[k] || k; }
+
+/* ---------- 通用 ---------- */
+function toast(msg, ms = 2400) {
+  const t = $('#toast'); t.textContent = msg; t.classList.remove('hide');
+  clearTimeout(t._h); t._h = setTimeout(() => t.classList.add('hide'), ms);
+}
+function fail(msg) {
+  const loading = $('#loading');
+  if (loading) loading.classList.add('hide');
+  console.error('[reader]', msg);
+  const f = $('#fail'); f.classList.remove('hide');
+  f.innerHTML = `<div style="font-size:40px">📖</div><div>${msg}</div>` +
+                `<button class="btn" onclick="location.href='/'">返回书库</button>`;
+}
+function addBtn(label, title, fn, icon = false) {
+  const b = document.createElement('button');
+  b.className = 'btn' + (icon ? ' icon' : '');
+  b.textContent = label; b.title = title; b.onclick = fn;
+  $('#controls').appendChild(b);
+  return b;
+}
+function setPos(text) { $('#pos').textContent = text; }
+function blurUI() {
+  try { if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); } catch (e) {}
+}
+function esc(s) { return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function loadScript(url) {
+  return new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = url; s.onload = res; s.onerror = () => rej(new Error('load ' + url));
+    document.head.appendChild(s);
+  });
+}
+async function loadAny(list) {
+  for (const u of list) { try { await loadScript(u); return u; } catch (e) {} }
+  throw new Error('所有 CDN 均加载失败');
+}
+const CDNS = {
+  jszip: [
+    'https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js',
+    'https://unpkg.com/jszip@3.10.1/dist/jszip.min.js',
+  ],
+  epub: [
+    'https://cdn.jsdelivr.net/epub.js/0.3.93/epub.min.js',
+    'https://unpkg.com/epubjs@0.3.93/dist/epub.min.js',
+    'https://npm.elemecdn.com/epubjs@0.3.93/dist/epub.min.js',
+  ],
+  pdf: [
+    ['https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js',
+     'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js',
+     'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/'],
+    ['https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',
+     'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js',
+     'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/'],
+  ],
+};
+
+/* ---------- 阅读偏好（按格式记忆） ---------- */
+const prefs = {
+  page: 'single',   // single | double
+  nav: 'h',         // h=左右翻页  v=上下滚动
+};
+function loadPrefs() {
+  try {
+    prefs.page = localStorage.getItem('br-page-' + book.format) === 'double' ? 'double' : 'single';
+    prefs.nav = localStorage.getItem('br-nav-' + book.format) === 'v' ? 'v' : 'h';
+  } catch (e) {}
+}
+function savePrefs() {
+  try {
+    localStorage.setItem('br-page-' + book.format, prefs.page);
+    localStorage.setItem('br-nav-' + book.format, prefs.nav);
+  } catch (e) {}
+}
+
+/* ---------- 主题（手动选择优先；未手动选过则按当地时段自动切换：19 点—6 点为夜） ---------- */
+const themeState = { mode: 'light', auto: true };
+try {
+  const saved = localStorage.getItem('br-theme');
+  if (saved === 'dark' || saved === 'light') { themeState.mode = saved; themeState.auto = false; }
+} catch (e) {}
+if (themeState.auto) {
+  const h = new Date().getHours();
+  themeState.mode = (h >= 19 || h < 6) ? 'dark' : 'light';
+}
+function applyTheme() {
+  const dark = themeState.mode === 'dark';
+  document.body.classList.toggle('night', dark);
+  $('#themeBtn').textContent = dark ? '☀️' : '🌙';
+  if (window._applyFormatTheme) window._applyFormatTheme(dark);
+}
+$('#themeBtn').onclick = () => {
+  themeState.mode = themeState.mode === 'dark' ? 'light' : 'dark';
+  try { localStorage.setItem('br-theme', themeState.mode); } catch (e) {}
+  applyTheme();
+  toast(themeState.mode === 'dark' ? t('night') : t('day'), 1200);
+};
+
+/* ---------- 键盘导航 ---------- */
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  if (e.key === 'ArrowLeft' || e.key === 'PageUp') window._nav.prev();
+  else if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') window._nav.next();
+  else if (e.key === 'Escape') {
+    $('#toc').classList.remove('open'); $('#noteDrawer').classList.remove('open');
+    hideSelBar(); blurUI();
+  }
+});
+
+/* ---------- 进度保存 / 恢复 ---------- */
+let saveTimer = null, savedPosition = null;
+function saveProgress(position, percent) {
+  rate.push(percent);               // 剩余时长预估的采样点
+  if (!me) return;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    fetch(`/api/progress/${bookId}`, { method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ position: JSON.stringify(position), percent }) }).catch(() => {});
+  }, 1200);
+}
+
+/* ---------- 阅读速度采样 → 预估剩余时间 ---------- */
+const rate = {
+  key: 'br-rate-' + bookId,
+  samples: [],
+  load() { try { this.samples = JSON.parse(localStorage.getItem(this.key) || '[]'); } catch (e) {} },
+  push(percent) {
+    const now = Date.now();
+    this.samples.push({ t: now, p: percent });
+    this.samples = this.samples.filter(s => now - s.t < 30 * 60 * 1000);   // 只看最近 30 分钟
+    if (this.samples.length > 40) this.samples = this.samples.slice(-40);
+    try { localStorage.setItem(this.key, JSON.stringify(this.samples)); } catch (e) {}
+    this.render(percent);
+  },
+  estimate(percent) {
+    if (this.samples.length < 2) return null;
+    const a = this.samples[0], b = this.samples[this.samples.length - 1];
+    const dtMin = (b.t - a.t) / 60000;
+    const dp = b.p - a.p;
+    if (dtMin < 0.3 || dp <= 0.002) return null;    // 样本太短（<30s）或没有进展，不做预估
+    const perMin = dp / dtMin;
+    const remain = (1 - percent) / perMin;
+    if (remain <= 0 || remain > 60 * 24) return null;
+    return Math.round(remain);
+  },
+  render(percent) {
+    const min = this.estimate(percent);
+    $('#eta').textContent = min ? `⏳ 约剩 ${min >= 60 ? Math.floor(min / 60) + ' 小时 ' + (min % 60) + ' 分' : min + ' 分钟'}` : '';
+  },
+};
+rate.load();
+// 时间流逝会让剩余预估变短，周期性重算
+setInterval(() => {
+  if (rate.samples.length) rate.render(rate.samples[rate.samples.length - 1].p);
+}, 30000);
+
+/* ---------- 阅读时长心跳（页面可见时每 15 秒上报；隐藏/关闭时补发零头） ---------- */
+let lastBeat = Date.now();
+function beat() {
+  if (!me) return;
+  const now = Date.now();
+  const delta = Math.round((now - lastBeat) / 1000);
+  lastBeat = now;
+  if (delta < 5 || delta > 90) return;               // 异常间隔丢弃
+  if (document.visibilityState !== 'visible') return;
+  fetch('/api/stats/heartbeat', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ seconds: delta }) }).catch(() => {});
+}
+setInterval(beat, 15000);
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) beat(); else lastBeat = Date.now();
+});
+window.addEventListener('pagehide', beat);
+async function loadSavedPosition() {
+  if (!me) return null;
+  try {
+    const r = await fetch(`/api/progress/${bookId}`);
+    if (!r.ok) return null;
+    const d = await r.json();
+    return d.position ? JSON.parse(d.position) : null;
+  } catch (e) { return null; }
+}
+
+/* ---------- 笔记（划线 / 想法） ---------- */
+async function loadNotes() {
+  if (!me) return;
+  try {
+    const r = await fetch(`/api/notes?book_id=${bookId}`);
+    if (r.ok) { const d = await r.json(); notes = d.highlights || []; }
+  } catch (e) {}
+}
+async function createNote(payload) {
+  const r = await fetch('/api/notes', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.detail || '保存失败'); }
+  return r.json();
+}
+async function deleteNote(id) {
+  const r = await fetch('/api/notes/' + id, { method: 'DELETE' });
+  if (!r.ok) throw new Error('删除失败');
+}
+function renderNoteDrawer() {
+  const list = $('#noteList');
+  list.innerHTML = '';
+  if (!me) {
+    list.innerHTML = '<div class="drawer-empty">' + (LANG === 'en' ? 'Not signed in — sign in to highlight and add thoughts<br>' : '未登录 —— 登录后可划线、记录想法<br>') +
+      '<button class="btn" style="margin-top:8px" onclick="location.href=\'/?view=recent\'">' + (LANG === 'en' ? 'Sign in' : '去首页登录') + '</button></div>';
+    return;
+  }
+  if (!notes.length) {
+    list.innerHTML = '<div class="drawer-empty">' + (LANG === 'en' ? 'No highlights yet<br>Select text while reading to highlight' : '还没有划线<br>阅读时选中一段文字即可划线') + '</div>';
+    return;
+  }
+  notes.forEach(h => {
+    const div = document.createElement('div');
+    div.className = 'hl-item';
+    div.innerHTML =
+      `<div class="q">${esc(h.content)}</div>` +
+      (h.thoughts || []).map(t =>
+        `<div class="t"><span>💬</span><span style="flex:1">${esc(t.content)}</span>` +
+        `<span class="x" data-tid="${t.id}">✕</span></div>`).join('') +
+      `<div class="add"><input placeholder="${LANG === 'en' ? 'Add a thought…' : '补充想法…'}"/><button class="btn" style="padding:6px 10px">${LANG === 'en' ? 'Add' : '记'}</button></div>`;
+    div.querySelector('.q').onclick = () => { jumpToNote(h); $('#noteDrawer').classList.remove('open'); };
+    div.querySelectorAll('.t .x').forEach(x => x.onclick = async () => {
+      try { await deleteNote(+x.dataset.tid); await loadNotes(); renderNoteDrawer();
+            if (window.applyHighlights) window.applyHighlights(); }
+      catch (e) { toast(e.message); }
+    });
+    const input = div.querySelector('.add input');
+    div.querySelector('.add .btn').onclick = async () => {
+      const text = input.value.trim();
+      if (!text) return;
+      try {
+        await createNote({ book_id: bookId, kind: 'thought', content: text, parent_id: h.id });
+        input.value = ''; input.blur();
+        await loadNotes(); renderNoteDrawer();
+        toast(t('recoSaved'));
+      } catch (e) { toast(e.message); }
+    };
+    list.appendChild(div);
+  });
+}
+$('#notesBtn').onclick = () => { renderNoteDrawer(); $('#noteDrawer').classList.toggle('open'); };
+
+function jumpToNote(h) {
+  let a; try { a = JSON.parse(h.anchor); } catch (e) { return; }
+  if (!a) return;
+  if (a.type === 'epub' && window._jumpEpub) { window._jumpEpub(a); return; }
+  if (a.type === 'pdf' && window._pdfNav) { window._pdfNav.goto(a.page, a.rects); return; }
+}
+
+/* ---------- 划线悬浮浮层（仅在有想法时显示想法内容） ---------- */
+function showHlTip(x, y, noteId) {
+  const h = notes.find(n => String(n.id) === String(noteId));
+  if (!h || !h.thoughts || !h.thoughts.length) { hideHlTip(); return; }
+  const tip = $('#hlTip');
+  tip.innerHTML = h.thoughts.map(t => `<div class="t"><b>💬</b>${esc(t.content)}</div>`).join('');
+  tip.classList.remove('hide');
+  const tw = tip.offsetWidth, th = tip.offsetHeight, pad = 14;
+  tip.style.left = Math.max(8, Math.min(x + pad, window.innerWidth - tw - 10)) + 'px';
+  tip.style.top = Math.max(8, Math.min(y + pad, window.innerHeight - th - 10)) + 'px';
+}
+function hideHlTip() { $('#hlTip').classList.add('hide'); }
+
+/* ---------- 划线操作条（选中文本后出现） ---------- */
+let pendingSel = null;   // { kind:'epub', cfi, text } | { kind:'pdf', page, rects, text }
+function showSelBar(p) {
+  pendingSel = p;
+  $('#selBar .txt').textContent = '“' + p.text.slice(0, 120) + (p.text.length > 120 ? '…' : '') + '”';
+  $('#selThought').classList.add('hide'); $('#selThought').value = '';
+  $('#selSave').textContent = t('selOnly');
+  $('#selSaveThought').textContent = t('selPlus');
+  $('#selBar').classList.remove('hide');
+}
+function hideSelBar() { $('#selBar').classList.add('hide'); pendingSel = null; blurUI(); }
+$('#selCancel').onclick = () => { hideSelBar(); clearSelection(); };
+$('#selSave').onclick = () => doCreateNote('');
+$('#selSaveThought').onclick = () => {
+  const box = $('#selThought');
+  if (box.classList.contains('hide')) {
+    box.classList.remove('hide'); box.focus();
+    $('#selSave').textContent = t('selOnly');
+    $('#selSaveThought').textContent = t('selSave');
+  } else doCreateNote(box.value.trim());
+};
+$('#selThought').onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doCreateNote($('#selThought').value.trim()); } };
+async function doCreateNote(thought) {
+  if (!pendingSel) return;
+  if (!me) { toast('请先登录后再划线'); location.href = '/?view=recent'; return; }
+  const p = pendingSel;
+  try {
+    const anchor = p.kind === 'epub' ? JSON.stringify({ type: 'epub', cfi: p.cfi, start: epubPointCfi(p.cfi) })
+                                     : JSON.stringify({ type: 'pdf', page: p.page, rects: p.rects });
+    const r = await createNote({ book_id: bookId, kind: 'highlight', content: p.text, anchor });
+    if (thought) await createNote({ book_id: bookId, kind: 'thought', content: thought, parent_id: r.id });
+    await loadNotes(); renderNoteDrawer();
+    if (window.applyHighlights) window.applyHighlights();
+    toast(thought ? t('hlThought') : t('hlSaved'));
+    hideSelBar(); clearSelection(); blurUI();
+  } catch (e) { toast(e.message); }
+}
+function clearSelection() {
+  const w = window; try { w.getSelection().removeAllRanges(); } catch (e) {}
+  document.querySelectorAll('#stage iframe').forEach(f => {
+    try { f.contentWindow.getSelection().removeAllRanges(); } catch (e) {}
+  });
+}
+
+/* epub.js 划线事件给的是 range CFI（epubcfi(/6/4!/4/2,/1:0,/1:20)），
+   跨段落选区 display(rangeCFI) 可能解析失败落错位置；
+   派生「起点 Point CFI」（epubcfi(/6/4!/4/2/1:0)），与续读定位同构、可靠。 */
+function epubPointCfi(rangeCfi) {
+  try {
+    const bang = rangeCfi.indexOf('!');
+    if (bang < 0) return rangeCfi;
+    const rest = rangeCfi.slice(bang + 1).replace(/\)$/, '');
+    const parts = rest.split(',');
+    if (parts.length >= 3) {
+      return rangeCfi.slice(0, bang + 1) + parts[0] + parts[1] + ')';
+    }
+    return rangeCfi;
+  } catch (e) { return rangeCfi; }
+}
+
+/* ================================================= 入口 */
+$('#backBtn').onclick = () => { history.length > 1 ? history.back() : location.href = '/'; };
+  function applyReaderLang() {
+    $('#dlBtn').title = t('dl');
+    $('#notesBtn').title = t('notes');
+    const tt = document.getElementById('tocH3Text'); if (tt) tt.textContent = t('tocH3');
+    const nt = document.getElementById('notesTitleText'); if (nt) nt.textContent = t('notesTitle');
+    const sc = document.getElementById('selCancel'); if (sc) sc.textContent = t('selCancel');
+    const ss = document.getElementById('selSave'); if (ss) ss.textContent = t('selOnly');
+    const sp = document.getElementById('selSaveThought'); if (sp) sp.textContent = t('selPlus');
+    const st = document.getElementById('selThought'); if (st) st.placeholder = t('selThinkPh');
+    document.title = (book ? book.title + ' · ' : '') + (LANG === 'en' ? 'Family Library' : '家庭图书馆');
+  }
+  applyReaderLang();
+$('#dlBtn').onclick = async () => {
+  try {
+    toast(t('dlPack')(book.title), 6000);
+    const resp = await fetch('/api/file/' + bookId);
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${(book.title || 'book-' + bookId).replace(/[\\/:*?"<>|]/g, '_')}.${book.format}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 8000);
+    toast(t('dlDone')(a.download));
+  } catch (e) { toast(t('dlErr') + e.message); }
+};
+
+(async function init() {
+  if (!bookId) return fail('缺少书籍 id 参数');
+  try {
+    const [meR, bookR] = await Promise.all([
+      fetch('/api/auth/me').then(r => r.json()),
+      fetch('/api/book/' + bookId),
+    ]);
+    me = meR.user;
+    if (!bookR.ok) { const e = await bookR.json().catch(() => ({})); return fail(e.detail || '书籍不存在'); }
+    book = await bookR.json();
+  } catch (e) { return fail('网络错误：' + e.message); }
+  if (!me) toast(t('notLogin'), 3500);
+  $('#title').textContent = book.title;
+  document.title = book.title + ' · 阅读器';
+  loadPrefs();
+  await loadNotes();
+  applyTheme();
+  if (book.format === 'epub') initEpub();
+  else if (book.format === 'pdf') initPdf();
+  else if (book.format === 'cbz' || book.format === 'cbr') initComic();
+  else fail('暂不支持该格式');
+})();
+
+/* 全局模式切换按钮（所有格式通用）：按钮文案显示点击后将切换到的目标状态 */
+function buildModeButtons(onChange) {
+  const btnPage = addBtn('', '单页 / 双页切换', () => {
+    prefs.page = prefs.page === 'single' ? 'double' : 'single';
+    savePrefs(); syncModeButtons(); onChange();
+  });
+  const btnNav = addBtn('', '左右翻页 / 上下滚动切换', () => {
+    prefs.nav = prefs.nav === 'h' ? 'v' : 'h';
+    savePrefs(); syncModeButtons(); onChange();
+  });
+  function syncModeButtons() {
+    btnPage.textContent = prefs.page === 'single' ? t('double') : t('single');
+    btnPage.title = prefs.page === 'single' ? t('toDouble') : t('toSingle');
+    btnNav.textContent = prefs.nav === 'h' ? t('scroll') : t('paged');
+    btnNav.title = prefs.nav === 'h' ? t('toScroll') : t('toPaged');
+    // 上下滚动模式下双页无意义，隐藏
+    btnPage.classList.toggle('hide', prefs.nav === 'v');
+  }
+  syncModeButtons();
+  return { syncModeButtons };
+}
+
+/* ================================================= EPUB */
+async function initEpub() {
+  try { await loadAny(CDNS.jszip); await loadAny(CDNS.epub); }
+  catch (e) { return fail(t('epubFail')); }
+  $('#loading').classList.add('hide');
+
+  const epub = ePub('/api/file/' + bookId, { openAs: 'epub' });
+  let rendition = null, lastCfi = null, fontSize = 110;
+
+  const EPUB_DAY_CSS = 'html, body { background:#FDFCF8 !important; color:#26231E !important; }';
+  // 夜读插图：白底垫板 + 对比增强（书内浅灰印刷图/文字保持可读）
+  const EPUB_NIGHT_CSS = 'html, body { background:#221E1B !important; color:#D8CFC2 !important; }' +
+                         'a { color:#C89B6E !important; }' +
+                         'img, svg { background:#FDFCF8 !important; filter:contrast(1.35) brightness(1.08); }';
+  function paintIframes() {
+    const dark = themeState.mode === 'dark';
+    document.querySelectorAll('#stage iframe').forEach(f => {
+      const doc = f.contentDocument;
+      if (!doc || !doc.head) return;
+      let style = doc.getElementById('br-theme-style');
+      if (!style) { style = doc.createElement('style'); style.id = 'br-theme-style'; doc.head.appendChild(style); }
+      style.textContent = dark ? EPUB_NIGHT_CSS : EPUB_DAY_CSS;
+      doc.querySelectorAll('svg[preserveAspectRatio="none"]').forEach(s =>
+        s.setAttribute('preserveAspectRatio', 'xMidYMid meet'));
+    });
+  }
+
+  // 划线渲染：epub.js 的 annotations.add 静默失效（实测），改为自行包裹文本节点
+  function applyHighlights() {
+    if (!rendition) return;
+    document.querySelectorAll('#stage iframe').forEach(f => {
+      const doc = f.contentDocument;
+      if (!doc || !doc.body) return;
+      // 清理旧标记
+      doc.querySelectorAll('span.br-hl').forEach(sp => {
+        const parent = sp.parentNode;
+        while (sp.firstChild) parent.insertBefore(sp.firstChild, sp);
+        sp.remove();
+        parent.normalize();
+      });
+      // 划线样式
+      let st = doc.getElementById('br-hl-style');
+      if (!st) { st = doc.createElement('style'); st.id = 'br-hl-style'; doc.head.appendChild(st); }
+      st.textContent = 'span.br-hl { background: rgba(250,204,21,.42); border-radius: 2px; }';
+      // 应用每条划线
+      notes.forEach(h => {
+        let a; try { a = JSON.parse(h.anchor); } catch (e) { return; }
+        if (!a || a.type !== 'epub' || !a.cfi) return;
+        let range;
+        try { range = rendition.getRange(a.cfi); } catch (e) { return; }
+        if (!range || !range.startContainer) return;
+        try { wrapRange(doc, range, h.id); } catch (e) {}
+      });
+    });
+  }
+
+  function wrapRange(doc, range, noteId) {
+    try {
+      if (range.startContainer.nodeType === 3 && range.startOffset > 0 && range.startOffset < range.startContainer.length)
+        range.setStart(range.startContainer.splitText(range.startOffset), 0);
+      if (range.endContainer.nodeType === 3 && range.endOffset > 0 && range.endOffset < range.endContainer.length)
+        range.endContainer.splitText(range.endOffset);
+    } catch (e) {}
+    const root = range.commonAncestorContainer.nodeType === 1
+      ? range.commonAncestorContainer : range.commonAncestorContainer.parentNode;
+    const walker = doc.createTreeWalker(root, doc.defaultView.NodeFilter.SHOW_TEXT, {
+      acceptNode: n => (range.intersectsNode(n) && n.textContent.trim())
+        ? doc.defaultView.NodeFilter.FILTER_ACCEPT : doc.defaultView.NodeFilter.FILTER_REJECT,
+    });
+    const nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    nodes.forEach(n => {
+      const span = doc.createElement('span');
+      span.className = 'br-hl';
+      if (noteId != null) span.dataset.noteId = noteId;
+      n.parentNode.insertBefore(span, n);
+      span.appendChild(n);
+    });
+  }
+
+  function wireRendition() {
+    rendition.themes.default({
+      'p, div, span, h1, h2, h3, li': { 'line-height': '1.75' },
+      'img, svg': { 'max-width': '98vw !important', 'max-height': '98vh !important',
+                    'width': 'auto !important', 'height': 'auto !important', 'object-fit': 'contain' },
+    });
+    rendition.themes.fontSize(fontSize + '%');
+    window._applyFormatTheme = () => paintIframes();
+
+    rendition.on('rendered', () => {
+      paintIframes(); applyHighlights(); schedSizeScroll();
+      // 每个书内文档一次性绑定：点划线开抽屉 / 键盘转发 / 划线悬浮浮层
+      document.querySelectorAll('#stage iframe').forEach(f => {
+        const doc = f.contentDocument;
+        if (!doc || doc._brHlBound) return;
+        doc._brHlBound = true;
+        doc.addEventListener('click', e => {
+          if (e.target && e.target.closest && e.target.closest('span.br-hl')) {
+            renderNoteDrawer(); $('#noteDrawer').classList.add('open');
+          }
+        });
+        // 焦点在书内 iframe 时，键盘事件不会冒泡到父页面——转发导航键
+        doc.addEventListener('keydown', e => {
+          const nav = parent.window._nav;
+          if (!nav) return;
+          if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); nav.prev(); }
+          else if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') { e.preventDefault(); nav.next(); }
+        });
+        const ifRect = f.getBoundingClientRect();
+        doc.addEventListener('mouseover', e => {
+          const sp = e.target && e.target.closest && e.target.closest('span.br-hl');
+          if (sp) showHlTip(e.clientX + ifRect.left, e.clientY + ifRect.top, sp.dataset.noteId);
+          else hideHlTip();
+        });
+        doc.addEventListener('mouseout', e => {
+          if (e.target && e.target.closest && e.target.closest('span.br-hl')) hideHlTip();
+        });
+        // 移动端手势：左右翻页模式下横滑=翻页；上下滚动模式下不接管横滑
+        // （竖滑经常带横向偏移，误触整屏滚动会“不跟手”），仅滚不动的短章用竖滑翻章
+        let tx = null, ty = null;
+        doc.addEventListener('touchstart', e => {
+          tx = e.touches[0].clientX; ty = e.touches[0].clientY;
+          parent.window._cancelPin && parent.window._cancelPin();
+        }, { passive: true });
+        doc.addEventListener('touchend', e => {
+          if (tx == null) return;
+          const dx = e.changedTouches[0].clientX - tx;
+          const dy = e.changedTouches[0].clientY - ty;
+          tx = null;
+          const nav = parent.window._nav;
+          if (!nav) return;
+          const stg = parent.document.getElementById('stage');
+          const vMode = stg && parent.getComputedStyle(stg).overflowY === 'auto';
+          if (vMode) {
+            // 章顶/章底边缘继续同向滑 → 切章；短章直接竖滑切章；其余交给原生滚动
+            parent.window._edgeSwipe && parent.window._edgeSwipe(dx, dy);
+            return;
+          }
+          if (Math.abs(dx) >= 60 && Math.abs(dx) >= Math.abs(dy) * 1.5) {
+            if (dx < 0) nav.next(); else nav.prev();
+          }
+        }, { passive: true });
+      });
+    });
+    window.applyHighlights = applyHighlights;   // 划线保存后的全局刷新钩子
+
+    rendition.on('selected', (cfi, contents) => {
+      let text = '';
+      try { text = (contents.window.getSelection().toString() || '').trim(); } catch (e) {}
+      if (text.length < 2) return;
+      showSelBar({ kind: 'epub', cfi, text });
+    });
+    rendition.on('relocated', loc => {
+      const s = loc && loc.start;
+      if (!s) return;
+      const total = epub.spine ? epub.spine.length : 0;
+      lastCfi = s.cfi;
+      window._lastCfi = s.cfi;   // 调试钩子：可从控制台核对切章基准
+      setPos(total ? `${(s.index || 0) + 1} / ${total} 章` : '');
+      const pct = total ? (s.index + 1) / total : 0;
+      saveProgress({ type: 'epub', cfi: s.cfi, index: s.index, total,
+                     start: epubPointCfi(s.cfi) }, pct);
+    });
+  }
+
+  // CFI 可靠定位：按可靠性依次尝试 起点 Point CFI → range CFI → 所在章节 → spine 序号 → 回开头
+  function spineIndexFromCfi(cfi) {
+    const m = (cfi || '').split('!')[0].match(/\/(\d+)$/);
+    if (!m) return null;
+    const even = parseInt(m[1], 10);
+    return even % 2 === 0 ? even / 2 - 1 : null;
+  }
+  async function landOnCfi(cfi, pointCfi) {
+    const attempts = [];
+    if (pointCfi) attempts.push(pointCfi);
+    attempts.push(cfi);
+    const sec = epub.spine.get(cfi);
+    if (sec && sec.href) attempts.push(sec.href);
+    const want = spineIndexFromCfi(cfi);
+    if (want != null) attempts.push(want);
+    for (const t of attempts) {
+      try { await rendition.display(t); return true; } catch (e) {}
+    }
+    try { await rendition.display(); } catch (e) {}
+    return false;
+  }
+  function flashNote(cfi) {
+    setTimeout(() => {
+      let scrolled = false;
+      document.querySelectorAll('#stage iframe').forEach(f => {
+        const doc = f.contentDocument;
+        if (!doc) return;
+        doc.querySelectorAll('span.br-hl').forEach(s => s.classList.add('br-hl-flash'));
+        const first = doc.querySelector('span.br-hl');
+        if (first && prefs.nav === 'v' && !scrolled) {
+          try { first.scrollIntoView({ block: 'center', behavior: 'smooth' }); scrolled = true; } catch (e) {}
+        }
+      });
+      setTimeout(() => document.querySelectorAll('#stage iframe').forEach(f => {
+        const doc = f.contentDocument;
+        doc && doc.querySelectorAll('span.br-hl').forEach(s => s.classList.remove('br-hl-flash'));
+      }), 2600);
+    }, 500);
+  }
+
+  /* 上下滚动模式：epub.js 0.3.93 的 flow:scrolled 自身高度自适应失效（iframe 塌成 ~25px），
+     这里接管——把 iframe 撑到内容实际高度，由 #stage 原生滚动 */
+  function sizeScrollIframes() {
+    if (prefs.nav !== 'v') return;
+    document.querySelectorAll('#stage iframe').forEach(f => {
+      const doc = f.contentDocument;
+      if (!doc || !doc.documentElement) return;
+      const h = Math.max(doc.documentElement.scrollHeight,
+                         doc.body ? doc.body.scrollHeight : 0);
+      if (h > 40 && Math.abs(f.getBoundingClientRect().height - h) > 2) f.style.height = h + 'px';
+    });
+  }
+  function schedSizeScroll() {              // 内容/图片/字体晚到，多次重试
+    [0, 120, 400, 1200, 3000].forEach(ms => setTimeout(sizeScrollIframes, ms));
+  }
+  // 滚动进度：章内滚动时也更新 CFI 与百分比（relocated 只在章节切换时触发）
+  let scrollProgTimer = null;
+  function onScrollProgress() {
+    if (prefs.nav !== 'v' || !rendition) return;
+    clearTimeout(scrollProgTimer);
+    scrollProgTimer = setTimeout(() => {
+      try {
+        const loc = rendition.currentLocation();
+        const s = loc && loc.start;
+        if (!s || !s.cfi) return;
+        const total = epub.spine ? epub.spine.length : 0;
+        lastCfi = s.cfi;
+        setPos(total ? `${(s.index || 0) + 1} / ${total} 章` : '');
+        const stg = $('#stage');
+        const frac = stg.scrollHeight > stg.clientHeight
+          ? stg.scrollTop / (stg.scrollHeight - stg.clientHeight) : 0;
+        const pct = total ? Math.min(1, ((s.index || 0) + frac) / total) : 0;
+        saveProgress({ type: 'epub', cfi: s.cfi, index: s.index, total,
+                       start: epubPointCfi(s.cfi) }, pct);
+      } catch (e) {}
+    }, 400);
+  }
+
+  /* 自然滚动到章底/章首自动切章（按钮、左右滑仍走 _nav） */
+  let autoAdvTimer = null, lastScrollTop = 0, chapterSwitching = false;
+  const shownIdx = () => { try { return rendition.currentLocation().start.index; } catch (e) { return -1; } };
+  /* v 模式触摸兜底：滚到章顶/章底后再继续上/下滑 → 切章；滚不动的短章竖滑即切章。
+     iframe 内与 stage（图外区域）共用同一判定 */
+  window._edgeSwipe = (dx, dy) => {
+    if (prefs.nav !== 'v' || !rendition) return;
+    const stg = $('#stage');
+    if (!stg || getComputedStyle(stg).overflowY !== 'auto') return;
+    const scrollable = stg.scrollHeight > stg.clientHeight + 8;
+    if (!scrollable) {
+      if (Math.abs(dy) >= 60 && Math.abs(dy) >= Math.abs(dx) * 1.5)
+        switchChapter(dy < 0 ? 1 : -1);
+      return;
+    }
+    const pin = pinPos(stg);                 // 刚切章的落点以钉住为准（过渡期滚动量不可信）
+    if (Math.abs(dy) < 60 || Math.abs(dy) < Math.abs(dx) * 1.5) return;
+    if (pin.atTop && dy > 0) switchChapter(-1);          // 章顶继续下滑 → 上一章
+    else if (pin.atBottom && dy < 0) switchChapter(1);   // 章底继续上滑 → 下一章
+  };
+  let switchToken = 0, switchReleaseTimer = null, landSuppressUntil = 0;
+  /* 切章落点钉住：scrolled 流过渡期 epub.js 可能把 stage 滚到任意位置（实测会滚到底），
+     钉住在窗口期内反复纠正到预期落点（进章顶 / 退章底）；用户触摸/滚轮即取消 */
+  let landPin = null;   // { idx, bottom, until }
+  window._cancelPin = () => { landPin = null; };
+  function pinPos(stg) {   // 当前章若被钉住，返回钦定的 atTop/atBottom（否则按实际滚动）
+    if (landPin && Date.now() < landPin.until && shownIdx() === landPin.idx)
+      return { atTop: !landPin.bottom, atBottom: landPin.bottom };
+    return {
+      atTop: stg.scrollTop <= 4,
+      atBottom: stg.scrollTop + stg.clientHeight >= stg.scrollHeight - 4,
+    };
+  }
+  function applyPin() {
+    if (!landPin || Date.now() > landPin.until
+        || shownIdx() !== landPin.idx) { landPin = null; return; }
+    const stg = $('#stage');
+    const want = landPin.bottom ? stg.scrollHeight : 0;
+    if (Math.abs(stg.scrollTop - want) > 4) stg.scrollTop = want;
+  }
+  function switchChapter(delta, force = false) {
+    if (chapterSwitching && !force) return;   // 自动触发让位于进行中的切章；按钮/滑动手势强切
+    const total = epub.spine ? epub.spine.length : 0;
+    const idx = (spineIndexFromCfi(lastCfi) ?? 0) + delta;
+    if (!(total && idx >= 0 && idx < total)) {
+      toast(delta > 0 ? t('lastPage') : t('firstPage'), 1000);
+      return;
+    }
+    chapterSwitching = true;                 // 切章期间抑制自动触发（防来回弹）
+    clearTimeout(autoAdvTimer);
+    clearTimeout(switchReleaseTimer);
+    const my = ++switchToken;                // 只认最新一次切章的解锁
+    const landBottom = delta < 0;            // 往回翻落在上一章末尾，接得上
+    landPin = { idx, bottom: landBottom, until: Date.now() + 2200 };   // 钉住落点
+    const release = () => {
+      if (my !== switchToken) return;
+      switchToken = 0;
+      clearTimeout(switchReleaseTimer);
+      chapterSwitching = false;
+      applyPin();                            // 立即按落点纠正一次滚动位置
+      const stg = $('#stage');
+      if (landBottom) {
+        // 贴底动作本身会触发 scroll → 不能被当成“用户滚到章底”而又自动进一章
+        landSuppressUntil = Date.now() + 1500;
+      }
+      lastScrollTop = stg.scrollTop;
+    };
+    try { rendition.off('rendered', release); } catch (e) {}
+    rendition.once('rendered', () =>           // 新章渲染完成 + 稳定一下即解锁，
+      { if (my === switchToken) switchReleaseTimer = setTimeout(release, 300); });
+    rendition.display(idx).catch(() => {});
+    switchReleaseTimer = setTimeout(release, 900);       // 保底：rendered 迟迟不来也解锁
+    [400, 700, 1000, 1400, 1900].forEach(ms =>           // 落点钉住纠正窗口
+      setTimeout(() => { if (my === switchToken) applyPin(); }, ms));
+  }
+  function maybeAutoChapter() {
+    if (prefs.nav !== 'v' || !rendition || chapterSwitching) return;
+    const stg = $('#stage');
+    const scrollable = stg.scrollHeight > stg.clientHeight + 8;
+    const pin = pinPos(stg);
+    const atBottom = scrollable && pin.atBottom;
+    const wasLower = lastScrollTop > 80;
+    lastScrollTop = stg.scrollTop;
+    if (atBottom) {
+      clearTimeout(autoAdvTimer);
+      if (Date.now() < landSuppressUntil) return;   // 退章贴底后的抑制窗口
+      const at = shownIdx();                 // 定时器存下触发时的章号
+      autoAdvTimer = setTimeout(() => {      // 二次确认仍在章尾（惯性滚动中途经过不算）
+        const s = $('#stage');
+        if (!chapterSwitching && shownIdx() === at && s.scrollHeight > s.clientHeight + 8
+            && pinPos(s).atBottom)
+          switchChapter(1);
+      }, 450);
+    } else if (pin.atTop && stg.scrollTop <= 8 && wasLower && scrollable) {
+      clearTimeout(autoAdvTimer);
+      const at = shownIdx();
+      autoAdvTimer = setTimeout(() => {
+        if (!chapterSwitching && shownIdx() === at && $('#stage').scrollTop <= 8)
+          switchChapter(-1);
+      }, 350);
+    } else clearTimeout(autoAdvTimer);
+  }
+
+  async function buildRendition(resumeCfi, resumePoint = null) {
+    if (rendition) { try { await rendition.destroy(); } catch (e) {} rendition = null; }
+    const root = document.createElement('div');
+    root.id = 'epubRoot';
+    // 左右翻页由 epub.js 自己管分页（隐藏滚动）；上下滚动交给 #stage 原生滚
+    $('#stage').innerHTML = '';
+    $('#stage').style.overflow = prefs.nav === 'v' ? 'auto' : 'hidden';
+    if (prefs.nav === 'v') root.style.height = 'auto';   // 撑开让内容决定高度
+    $('#stage').appendChild(root);
+    const flow = prefs.nav === 'v' ? 'scrolled' : 'paginated';
+    const spread = (prefs.nav === 'h' && prefs.page === 'double') ? 'auto' : 'none';
+    rendition = epub.renderTo(root, { width: '100%', height: '100%', flow, spread });
+    window._rend = rendition;
+    wireRendition();
+    try {
+      if (resumeCfi) {
+        await landOnCfi(resumeCfi, resumePoint);
+        if (noteAnchor) flashNote(resumeCfi);
+      } else {
+        await rendition.display();
+      }
+    } catch (e) {
+      console.error('[epub buildRendition]', e);
+      return fail('EPUB 解析失败：' + e.message);
+    }
+    paintIframes(); applyHighlights();
+    schedSizeScroll();
+  }
+
+  buildModeButtons(() => {
+    buildRendition(lastCfi);
+  });
+
+  addBtn(t('toc'), t('tocTip'), () => $('#toc').classList.toggle('open'));
+  addBtn('◀', t('prev'), () => window._nav.prev(), true);
+  addBtn('▶', t('next'), () => window._nav.next(), true);
+  addBtn('A-', t('fontDown'), () => { fontSize = Math.max(80, fontSize - 10); rendition.themes.fontSize(fontSize + '%'); schedSizeScroll(); });
+  addBtn('A+', t('fontUp'), () => { fontSize = Math.min(200, fontSize + 10); rendition.themes.fontSize(fontSize + '%'); schedSizeScroll(); });
+
+  // 上下滚动模式：章内先按屏滚动，到章首/章尾才切章（scrolled 流下 rendition.next()
+  // 内部会崩，用 spine 序号直接 display）；左右翻页模式直接 prev/next
+  window._nav = {
+    prev: () => {
+      if (!rendition) return;
+      const stg = $('#stage');
+      if (prefs.nav === 'v') {
+        if (stg.scrollTop > 2) { stg.scrollBy({ top: -stg.clientHeight * 0.9, behavior: 'smooth' }); return; }
+        switchChapter(-1, true); return;
+      }
+      rendition.prev();
+    },
+    next: () => {
+      if (!rendition) return;
+      const stg = $('#stage');
+      if (prefs.nav === 'v') {
+        if (stg.scrollTop + stg.clientHeight < stg.scrollHeight - 2) {
+          stg.scrollBy({ top: stg.clientHeight * 0.9, behavior: 'smooth' }); return;
+        }
+        switchChapter(1, true); return;
+      }
+      rendition.next();
+    },
+  };
+
+  epub.loaded.navigation.then(nav => {
+    const list = $('#tocList');
+    const walk = (items, depth) => {
+      items.forEach(it => {
+        const a = document.createElement('a');
+        a.textContent = '　'.repeat(depth) + (it.label || it.title || '未命名').trim();
+        a.onclick = () => { rendition.display(it.href); $('#toc').classList.remove('open'); };
+        list.appendChild(a);
+        if (it.subitems && it.subitems.length) walk(it.subitems, depth + 1);
+      });
+    };
+    walk(nav.toc || [], 0);
+  });
+
+  // 恢复位置：笔记锚点 > 已存进度 > 默认
+  let resumeCfi = null, resumePoint = null;
+  if (noteAnchor) {
+    try {
+      const a = JSON.parse(noteAnchor);
+      if (a.type === 'epub') { resumeCfi = a.cfi; resumePoint = a.start || null; }
+    } catch (e) {}
+  }
+  if (!resumeCfi) {
+    const saved = await loadSavedPosition();
+    if (saved && saved.type === 'epub' && saved.cfi) {
+      resumeCfi = saved.cfi;
+      resumePoint = saved.start || null;
+      toast(t('resumed'), 1600);
+    }
+  }
+  await buildRendition(resumeCfi, resumePoint);
+
+  // 章内滚动 → 更新进度/剩余时长 + 章尾/章首自动切章（一次性挂 stage 上，rebuild 不重挂）
+  $('#stage').addEventListener('scroll', () => { onScrollProgress(); maybeAutoChapter(); }, { passive: true });
+  // stage 上的触摸（短章时 iframe 只有图片那么高，图外区域落在这里）→ 同一套边缘滑动切章
+  let stgTx = null, stgTy = null;
+  $('#stage').addEventListener('touchstart', e => {
+    stgTx = e.touches[0].clientX; stgTy = e.touches[0].clientY;
+    window._cancelPin && window._cancelPin();   // 用户上手 → 落点钉住立即失效
+  }, { passive: true });
+  $('#stage').addEventListener('touchend', e => {
+    if (stgTx == null) return;
+    const dx = e.changedTouches[0].clientX - stgTx;
+    const dy = e.changedTouches[0].clientY - stgTy;
+    stgTx = null;
+    window._edgeSwipe && window._edgeSwipe(dx, dy);
+  }, { passive: true });
+  window.addEventListener('resize', sizeScrollIframes, { passive: true });
+  // 桌面滚轮：章底继续下滚 → 下一章；章首上滚 → 上一章（短章不足一屏同样适用）
+  let wheelNavTimer = null;
+  $('#stage').addEventListener('wheel', e => {
+    if (prefs.nav !== 'v' || chapterSwitching) return;
+    window._cancelPin && window._cancelPin();   // 用户滚轮 → 落点钉住立即失效
+    const stg = $('#stage');
+    const atBottom = stg.scrollTop + stg.clientHeight >= stg.scrollHeight - 4;
+    const atTop = stg.scrollTop <= 4;
+    const wantNext = atBottom && e.deltaY > 0, wantPrev = atTop && e.deltaY < 0;
+    if (!wantNext && !wantPrev) return;
+    e.preventDefault();
+    clearTimeout(wheelNavTimer);
+    wheelNavTimer = setTimeout(() => switchChapter(wantNext ? 1 : -1), 200);
+  }, { passive: false });
+
+  // 笔记页“阅读原文”跳转入口
+  window._jumpEpub = a => {
+    landOnCfi(a.cfi, a.start || null).then(() => {
+      flashNote(a.cfi);
+      renderNoteDrawer(); $('#noteDrawer').classList.add('open');
+    });
+  };
+}
+
+/* ================================================= PDF */
+async function initPdf() {
+  let workerUrl = null, cMapUrl = null;
+  for (const [src, worker, cmaps] of CDNS.pdf) {
+    try { await loadScript(src); workerUrl = worker; cMapUrl = cmaps; break; }
+    catch (e) {}
+  }
+  if (!workerUrl) return fail(t('pdfFail'));
+  pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
+
+  let pdf;
+  try {
+    pdf = await pdfjsLib.getDocument({
+      url: '/api/file/' + bookId,
+      cMapUrl: cMapUrl, cMapPacked: true,
+      standardFontDataUrl: cMapUrl ? cMapUrl.replace(/cmaps\/$/, 'standard_fonts/') : undefined,
+    }).promise;
+  } catch (e) { return fail('PDF 加载失败：' + (e.message || e)); }
+
+  $('#loading').classList.add('hide');
+  const st = { page: 1, total: pdf.numPages, zoom: 1.1, cur: 0 };
+  const stage = $('#stage');
+
+  function highlightRects(pageNo, boxW, boxH) {
+    const layer = document.createElement('div');
+    layer.className = 'hlLayer';
+    notes.forEach(h => {
+      let a; try { a = JSON.parse(h.anchor); } catch (e) { return; }
+      if (!a || a.type !== 'pdf' || a.page !== pageNo || !Array.isArray(a.rects)) return;
+      a.rects.forEach(rc => {
+        const i = document.createElement('i');
+        i.style.left = (rc[0] * 100) + '%'; i.style.top = (rc[1] * 100) + '%';
+        i.style.width = (rc[2] * 100) + '%'; i.style.height = (rc[3] * 100) + '%';
+        if (noteAnchor && h.anchor === noteAnchor) i.classList.add('flash');
+        i.dataset.noteId = h.id;
+        layer.appendChild(i);
+      });
+    });
+    return layer;
+  }
+
+  async function addTextLayer(page, box, canvas, zoom) {
+    if (!pdfjsLib.renderTextLayer) return;
+    try {
+      const tc = await page.getTextContent();
+      const vpT = page.getViewport({ scale: zoom });
+      const layer = document.createElement('div');
+      layer.className = 'textLayer';
+      layer.style.width = Math.floor(vpT.width) + 'px';
+      layer.style.height = Math.floor(vpT.height) + 'px';
+      box.appendChild(layer);
+      // PDF.js 3.11 要求容器设置 --scale-factor，否则文本层缩放报错
+      box.style.setProperty('--scale-factor', String(zoom));
+      await pdfjsLib.renderTextLayer({ textContent: tc, container: layer, viewport: vpT }).promise;
+    } catch (e) {}
+  }
+
+  function fitZoom(pageH, pageW, cols) {
+    const h = (stage.clientHeight - 24) / pageH;
+    const w = (stage.clientWidth - 24 - (cols - 1) * 10) / (pageW * cols);
+    return Math.max(0.2, Math.min(h, w, 2.0));
+  }
+
+  async function renderInto(box, n, zoom) {
+    const page = await pdf.getPage(n);
+    const vp = page.getViewport({ scale: zoom });
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.floor(vp.width * dpr);
+    canvas.height = Math.floor(vp.height * dpr);
+    canvas.style.width = Math.floor(vp.width) + 'px';
+    canvas.style.height = Math.floor(vp.height) + 'px';
+    box.style.width = canvas.style.width;
+    box.style.height = canvas.style.height;
+    box.dataset.page = n;
+    box.appendChild(canvas);
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp,
+                        transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : null }).promise;
+    box.appendChild(highlightRects(n, vp.width, vp.height));
+    addTextLayer(page, box, canvas, zoom);
+    return page;
+  }
+
+  /* ---- 左右翻页模式（单/双页） ---- */
+  const wrapH = document.createElement('div');
+  wrapH.id = 'pageWrapH';
+  let hToken = 0;
+  async function renderH() {
+    const token = ++hToken;
+    wrapH.innerHTML = '';
+    const p1 = await pdf.getPage(st.page);
+    const vp1 = p1.getViewport({ scale: 1 });
+    const cols = prefs.page === 'double' ? 2 : 1;
+    const zoom = fitZoom(vp1.height, vp1.width, cols);
+    const pages = prefs.page === 'double' ? [st.page, st.page + 1] : [st.page];
+    for (const n of pages) {
+      if (n > st.total || token !== hToken) continue;
+      const box = document.createElement('div');
+      box.className = 'pageBox';
+      wrapH.appendChild(box);
+      try { await renderInto(box, n, zoom); } catch (e) {}
+    }
+    if (token === hToken) {
+      setPos(st.page + (cols === 2 && st.page + 1 <= st.total ? '-' + (st.page + 1) : '') + ' / ' + st.total);
+      const pct = st.page / st.total;
+      saveProgress({ type: 'pdf', page: st.page }, pct);
+    }
+  }
+
+  /* ---- 上下滚动模式 ---- */
+  const scrollWrap = document.createElement('div');
+  scrollWrap.id = 'pagesScroll';
+  let boxes = [], observer = null;
+  function buildScroll(firstVp) {
+    scrollWrap.innerHTML = ''; boxes = [];
+    for (let i = 1; i <= st.total; i++) {
+      const box = document.createElement('div');
+      box.className = 'pageBox';
+      box.style.width = Math.floor(firstVp.width) + 'px';
+      box.style.height = Math.floor(firstVp.height) + 'px';
+      scrollWrap.appendChild(box);
+      boxes.push({ box, n: i, done: false });
+    }
+    if (observer) observer.disconnect();
+    observer = new IntersectionObserver(entries => {
+      entries.forEach(en => {
+        const item = boxes.find(b => b.box === en.target);
+        if (item && en.isIntersecting && !item.done) renderBox(item);
+      });
+    }, { root: stage, rootMargin: '500px 0px' });
+    boxes.forEach(b => observer.observe(b.box));
+  }
+  async function renderBox(item) {
+    item.done = true;
+    const page = await pdf.getPage(item.n);
+    const vp1 = page.getViewport({ scale: 1 });
+    const zoom = fitZoom(vp1.height, vp1.width, 1);
+    try {
+      await renderInto(item.box, item.n, zoom);
+      updatePosScroll();
+    } catch (e) { item.done = false; }
+  }
+  function updatePosScroll() {
+    const mid = stage.getBoundingClientRect().top + stage.clientHeight / 2;
+    let best = st.page;
+    for (const b of boxes) {
+      const r = b.box.getBoundingClientRect();
+      if (r.top <= mid && r.bottom >= mid) { best = b.n; break; }
+    }
+    if (best !== st.page) {
+      st.page = best;
+      setPos(best + ' / ' + st.total);
+      saveProgress({ type: 'pdf', page: best }, best / st.total);
+    }
+  }
+
+  function applyMode(resumePage) {
+    st.page = Math.min(Math.max(1, resumePage || st.page), st.total);
+    stage.innerHTML = '';
+    stage.style.overflow = 'auto';
+    if (prefs.nav === 'h') { stage.appendChild(wrapH); renderH(); }
+    else {
+      stage.appendChild(scrollWrap);
+      setPos(st.page + ' / ' + st.total);
+      pdf.getPage(st.page).then(p => {
+        const vp1 = p.getViewport({ scale: 1 });
+        const zoom = fitZoom(vp1.height, vp1.width, 1);
+        buildScroll({ width: vp1.width * zoom, height: vp1.height * zoom });
+        const target = boxes[st.page - 1];
+        if (target) setTimeout(() => renderBox(target), 60);
+      });
+    }
+  }
+
+  buildModeButtons(() => applyMode(st.page));
+
+  addBtn('−', t('zoomOut'), () => {
+    st.zoom = Math.max(0.4, st.zoom - 0.15);
+    if (prefs.nav === 'v') applyMode(st.page); else renderH();
+    toast(t('zoom')(st.zoom), 1000);
+  });
+  addBtn('+', t('zoomIn'), () => {
+    st.zoom = Math.min(3, st.zoom + 0.15);
+    if (prefs.nav === 'v') applyMode(st.page); else renderH();
+    toast(t('zoom')(st.zoom), 1000);
+  });
+  addBtn('◀', t('prev'), () => {
+    const step = (prefs.nav === 'h' && prefs.page === 'double') ? 2 : 1;
+    if (prefs.nav === 'v') { stage.scrollBy({ top: -stage.clientHeight * 0.9, behavior: 'smooth' }); return; }
+    if (st.page > 1) { st.page = Math.max(1, st.page - step); renderH(); }
+  }, true);
+  addBtn('▶', t('next'), () => {
+    const step = (prefs.nav === 'h' && prefs.page === 'double') ? 2 : 1;
+    if (prefs.nav === 'v') { stage.scrollBy({ top: stage.clientHeight * 0.9, behavior: 'smooth' }); return; }
+    if (st.page < st.total) { st.page = Math.min(st.total, st.page + step); renderH(); }
+  }, true);
+
+  stage.addEventListener('scroll', () => { if (prefs.nav === 'v') updatePosScroll(); }, { passive: true });
+
+  // PDF 划线选区捕获（mouseup 时读取选区相对页面的位置）
+  stage.addEventListener('mouseup', () => setTimeout(() => {
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed || sel.rangeCount === 0) return;
+    const range = sel.getRangeAt(0);
+    const node = range.commonAncestorContainer;
+    const layer = (node.nodeType === 1 ? node : node.parentElement).closest('.textLayer');
+    if (!layer) return;
+    const box = layer.closest('.pageBox');
+    const canvas = box && box.querySelector('canvas');
+    if (!canvas) return;
+    const text = sel.toString().trim();
+    if (text.length < 2) return;
+    const cRect = canvas.getBoundingClientRect();
+    const rects = [...range.getClientRects()].filter(r => r.width > 1 && r.height > 1).map(r => [
+      Math.max(0, (r.left - cRect.left) / cRect.width),
+      Math.max(0, (r.top - cRect.top) / cRect.height),
+      Math.min(1, r.width / cRect.width),
+      Math.min(1, r.height / cRect.height),
+    ]).slice(0, 30);
+    const pageNo = +box.dataset.page || currentPageOfBox(box);
+    showSelBar({ kind: 'pdf', page: pageNo, rects, text });
+  }, 10));
+
+  // 划线悬浮 → 想法浮层（覆盖层 pointer-events:none，用坐标命中检测，不影响选字）
+  stage.addEventListener('mousemove', e => {
+    let hit = null;
+    document.querySelectorAll('.hlLayer i').forEach(el => {
+      const r = el.getBoundingClientRect();
+      if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) hit = el;
+    });
+    if (hit) showHlTip(e.clientX, e.clientY, hit.dataset.noteId);
+    else hideHlTip();
+  });
+  function currentPageOfBox(box) {
+    const idx = boxes.findIndex(b => b.box === box);
+    if (idx >= 0) return boxes[idx].n;
+    // 左右模式：wrapH 内两个 box，按 DOM 顺序
+    const list = [...wrapH.querySelectorAll('.pageBox')];
+    const i = list.indexOf(box);
+    return st.page + Math.max(0, i);
+  }
+
+  window._nav = {
+    prev: () => { if (prefs.nav === 'v') stage.scrollBy({ top: -stage.clientHeight * 0.9 }); else if (st.page > 1) { st.page--; renderH(); } },
+    next: () => { if (prefs.nav === 'v') stage.scrollBy({ top: stage.clientHeight * 0.9 }); else if (st.page < st.total) { st.page++; renderH(); } },
+  };
+  window.applyHighlights = () => applyMode(st.page);   // 划线变化后重绘覆盖层
+  window._pdfNav = {
+    goto(page, rects) {
+      st.page = Math.min(Math.max(1, page), st.total);
+      applyMode(st.page);
+      if (rects && prefs.nav === 'v') setTimeout(() => {
+        const b = boxes[st.page - 1];
+        if (b) b.box.scrollIntoView({ block: 'center' });
+      }, 700);
+      toast('已跳转到笔记位置', 1400);
+    },
+  };
+
+  // 恢复 / 跳转
+  let resumePage = 1;
+  if (noteAnchor) { try { const a = JSON.parse(noteAnchor); if (a.type === 'pdf') resumePage = a.page; } catch (e) {} }
+  if (!noteAnchor) {
+    const saved = await loadSavedPosition();
+    if (saved && saved.type === 'pdf' && saved.page) {
+      resumePage = saved.page;
+      toast(t('resumed'), 1600);
+    }
+  }
+  applyMode(resumePage);
+  setPos(resumePage + ' / ' + st.total);
+
+  // 扫描版 PDF（整页图片、无文字层）检测：无法选字划线，稍后提示（避开续读提示）
+  try {
+    const p1 = await pdf.getPage(1);
+    const tc = await p1.getTextContent();
+    const hasText = (tc.items || []).some(it => (it.str || '').trim());
+    if (!hasText) setTimeout(() =>
+      toast(t('scanned'), 6000), 1600);
+  } catch (e) {}
+}
+
+/* ================================================= 漫画 CBZ/CBR */
+async function initComic() {
+  let data;
+  try {
+    const r = await fetch(`/api/comic/${bookId}/pages`);
+    data = await r.json();
+  } catch (e) { return fail('网络错误：' + e.message); }
+  if (data.error) return fail(data.error);
+  const total = data.count;
+  if (!total) return fail('压缩包内没有找到图片');
+
+  $('#loading').classList.add('hide');
+  const st = { idx: 0 };
+  const stage = $('#stage');
+  stage.style.overflow = 'auto';
+
+  const wrapH = document.createElement('div');
+  wrapH.id = 'pageWrapH';
+  wrapH.style.position = 'relative';
+  const scrollWrap = document.createElement('div');
+  scrollWrap.id = 'pagesScroll';
+
+  function imgUrl(i) { return `/api/comic/${bookId}/page/${i}`; }
+  function savePos() {
+    saveProgress({ type: 'comic', idx: st.idx }, (st.idx + 1) / total);
+  }
+
+  /* 左右（单/双页） */
+  function renderH() {
+    stage.innerHTML = '';
+    wrapH.innerHTML = '';
+    const mk = i => {
+      const im = document.createElement('img');
+      im.className = 'comic';
+      im.src = imgUrl(i);
+      im.alt = '第' + (i + 1) + '页';
+      wrapH.appendChild(im);
+    };
+    if (prefs.page === 'double') {
+      mk(st.idx);
+      if (st.idx + 1 < total) mk(st.idx + 1);
+      setPos((st.idx + 1) + (st.idx + 1 < total ? '-' + (st.idx + 2) : '') + ' / ' + total);
+    } else {
+      mk(st.idx);
+      setPos((st.idx + 1) + ' / ' + total);
+    }
+    stage.appendChild(wrapH);
+    for (let i = st.idx + 2; i < Math.min(st.idx + 4, total); i++) { const p = new Image(); p.src = imgUrl(i); }
+    savePos();
+  }
+  /* 上下连续滚动（原生懒加载） */
+  function renderV(startIdx) {
+    stage.innerHTML = '';
+    scrollWrap.innerHTML = '';
+    for (let i = 0; i < total; i++) {
+      const box = document.createElement('div');
+      box.className = 'pageBox';
+      box.style.padding = '0';
+      box.style.background = 'transparent';
+      box.style.boxShadow = 'none';
+      const im = document.createElement('img');
+      im.src = imgUrl(i);
+      im.loading = 'lazy';
+      im.alt = '第' + (i + 1) + '页';
+      im.style.maxWidth = '100%';
+      im.style.maxHeight = '96vh';
+      im.style.display = 'block';
+      im.dataset.idx = i;
+      box.appendChild(im);
+      scrollWrap.appendChild(box);
+    }
+    stage.appendChild(scrollWrap);
+    const target = scrollWrap.children[Math.min(startIdx, total - 1)];
+    if (target) setTimeout(() => target.scrollIntoView({ block: 'start' }), 80);
+  }
+  function updatePosV() {
+    const mid = stage.getBoundingClientRect().top + stage.clientHeight / 2;
+    let best = st.idx;
+    [...scrollWrap.children].forEach((box, i) => {
+      const r = box.getBoundingClientRect();
+      if (r.top <= mid && r.bottom >= mid) best = i;
+    });
+    if (best !== st.idx) { st.idx = best; setPos((best + 1) + ' / ' + total); savePos(); }
+  }
+
+  function step() { return prefs.page === 'double' ? 2 : 1; }
+  function prev() {
+    if (prefs.nav === 'v') { stage.scrollBy({ top: -stage.clientHeight * 0.9, behavior: 'smooth' }); return; }
+    if (st.idx - step() >= 0) { st.idx -= step(); renderH(); }
+    else toast(t('firstPage'), 1000);
+  }
+  function next() {
+    if (prefs.nav === 'v') { stage.scrollBy({ top: stage.clientHeight * 0.9, behavior: 'smooth' }); return; }
+    if (st.idx + step() < total) { st.idx += step(); renderH(); }
+    else toast(t('lastPage'), 1000);
+  }
+
+  function applyMode(resumeIdx) {
+    st.idx = Math.min(Math.max(0, resumeIdx || 0), total - 1);
+    if (prefs.nav === 'v') { renderV(st.idx); setPos((st.idx + 1) + ' / ' + total); }
+    else renderH();
+  }
+
+  buildModeButtons(() => applyMode(st.idx));
+
+  addBtn('◀', t('prev'), prev, true);
+  addBtn('▶', t('next'), next, true);
+
+  // 点击左右区域翻页（仅左右模式）
+  const zl = document.createElement('div'); zl.className = 'zone left'; zl.onclick = prev;
+  const zr = document.createElement('div'); zr.className = 'zone right'; zr.onclick = next;
+  stage.addEventListener('click', e => {
+    if (prefs.nav !== 'h') return;
+    const rect = stage.getBoundingClientRect();
+    if (e.clientX - rect.left < rect.width * 0.3) prev();
+    else if (rect.right - e.clientX < rect.width * 0.3) next();
+  });
+
+  stage.addEventListener('scroll', () => { if (prefs.nav === 'v') updatePosV(); }, { passive: true });
+
+  window._nav = { prev, next };
+  window.applyHighlights = () => {};   // 漫画无文本，不支持划线
+
+  // 恢复
+  let resumeIdx = 0;
+  const saved = await loadSavedPosition();
+  if (saved && saved.type === 'comic' && typeof saved.idx === 'number') {
+    resumeIdx = saved.idx;
+    toast(t('resumed'), 1600);
+  }
+  applyMode(resumeIdx);
+}
+applyTheme();
+</script>
+
+<!-- 云朵浮层：待解答问题（阅读时随手记，登录后显示） -->
+<div id="qCloud" style="display:none" title="">
+  <svg class="cloud-svg" viewBox="0 0 96 68" aria-hidden="true">
+    <path d="M25 56a14 14 0 01-2.3-27.8A20 20 0 0162 20.5 15.5 15.5 0 0171 56z"
+          fill="var(--panel)" stroke="var(--accent)" stroke-width="2.2" stroke-linejoin="round"/>
+  </svg>
+  <div class="cloud-face">
+    <span class="cloud-txt" id="qCloudLabel">问题</span>
+    <span class="cloud-badge" id="qCloudBadge">0</span>
+  </div>
+  <div class="cloud-panel" id="qCloudPanel">
+    <div class="cloud-head"><span id="qCloudOpen">待解答的问题</span>
+      <span class="cloud-count" id="qCloudCount">0</span></div>
+    <div class="cloud-list" id="qCloudList"></div>
+    <div class="cloud-add">
+      <input type="text" id="qCloudInput" placeholder="写下你的问题…"/>
+      <button id="qCloudSend" title="添加">＋</button>
+    </div>
+  </div>
+</div>
+<script>
+/* ================= 云朵浮层（阅读页自包含版） ================= */
+(function () {
+  'use strict';
+  const cloud = document.getElementById('qCloud');
+  const $id = id => document.getElementById(id);
+  let LANG = 'zh';
+  try { LANG = localStorage.getItem('br-lang') === 'en' ? 'en' : 'zh'; } catch (e) {}
+  const I = {
+    zh: { label: '问题', open: '待解答的问题', none: '没有待解答的问题',
+          hint: '悬停查看 · 点击固定 · 拖拽移动', hintTouch: '单击查看 · 双击添加 · 长按拖动',
+          ph: '写下你的问题…', saved: '问题已记录', fail: '添加失败：' },
+    en: { label: 'Q', open: 'Open questions', none: 'Nothing to answer',
+          hint: 'Hover to view · Click to pin · Drag to move', hintTouch: 'Tap to view · Double-tap to add · Drag to move',
+          ph: 'Write your question…', saved: 'Question saved', fail: 'Failed to add: ' },
+  }[LANG];
+  const esc = s => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  $id('qCloudLabel').textContent = I.label;
+  $id('qCloudOpen').textContent = I.open;
+  $id('qCloudInput').placeholder = I.ph;
+  cloud.title = matchMedia('(pointer: coarse)').matches ? I.hintTouch : I.hint;
+
+  let openQs = [], pinned = false, dragged = false, drag = null, lastTap = 0, tapTimer = null;
+
+  async function refresh() {
+    let data;
+    try {
+      const r = await fetch('/api/questions', { headers: { 'Content-Type': 'application/json' } });
+      if (r.status === 401) return;                      // 未登录：保持隐藏
+      data = await r.json();
+    } catch (e) { return; }
+    cloud.style.display = 'block';
+    openQs = (data.questions || []).filter(q => !q.answer);
+    const badge = $id('qCloudBadge');
+    badge.textContent = openQs.length;
+    badge.style.display = openQs.length ? 'flex' : 'none';
+    $id('qCloudCount').textContent = openQs.length;
+    const list = $id('qCloudList');
+    list.innerHTML = openQs.length ? '' : '<div class="cloud-none">' + I.none + '</div>';
+    openQs.forEach((q, i) => {
+      const it = document.createElement('div');
+      it.className = 'cloud-item';
+      it.innerHTML = '<span class="ci">Q' + (i + 1) + '</span>' + esc(q.question);
+      list.appendChild(it);
+    });
+  }
+
+  function setOpen(open) {
+    cloud.classList.toggle('open', open);
+    const p = $id('qCloudPanel');
+    p.classList.remove('up');
+    if (!open) { p.style.left = ''; return; }
+    const r = cloud.getBoundingClientRect();
+    if (r.bottom + 330 > innerHeight) p.classList.add('up');
+    const pw = p.offsetWidth || 300;
+    let left = 0;
+    if (r.left + r.width / 2 > innerWidth / 2) left = r.width - pw;
+    const abs = Math.min(Math.max(8, r.left + left), innerWidth - pw - 8);
+    p.style.left = (abs - r.left) + 'px';
+  }
+
+  /* 位置：与主页共享记忆，超出视口时收回视口内 */
+  (function initPos() {
+    let pos = null;
+    try { pos = JSON.parse(localStorage.getItem('br-cloud-pos') || 'null'); } catch (e) {}
+    let x = innerWidth - 140, y = innerHeight - 200;
+    if (pos && pos.l && pos.t) {
+      x = parseFloat(pos.l); y = parseFloat(pos.t);
+    }
+    x = Math.min(Math.max(0, x), innerWidth - cloud.offsetWidth);
+    y = Math.min(Math.max(0, y), innerHeight - cloud.offsetHeight);
+    cloud.style.left = x + 'px';
+    cloud.style.top = y + 'px';
+  })();
+
+  cloud.addEventListener('pointerdown', e => {
+    if (e.target.closest('.cloud-panel')) return;
+    const r = cloud.getBoundingClientRect();
+    drag = { dx: e.clientX - r.left, dy: e.clientY - r.top, sx: e.clientX, sy: e.clientY };
+    try { cloud.setPointerCapture(e.pointerId); } catch (err) {}
+  });
+  cloud.addEventListener('pointermove', e => {
+    if (!drag) return;
+    if (Math.abs(e.clientX - drag.sx) > 5 || Math.abs(e.clientY - drag.sy) > 5) {
+      cloud.classList.add('dragging'); dragged = true;
+    }
+    const x = Math.min(Math.max(0, e.clientX - drag.dx), innerWidth - cloud.offsetWidth);
+    const y = Math.min(Math.max(0, e.clientY - drag.dy), innerHeight - cloud.offsetHeight);
+    cloud.style.left = x + 'px';
+    cloud.style.top = y + 'px';
+  });
+  cloud.addEventListener('pointerup', () => {
+    drag = null;
+    setTimeout(() => cloud.classList.remove('dragging'), 60);
+    try { localStorage.setItem('br-cloud-pos', JSON.stringify(
+      { l: cloud.style.left, t: cloud.style.top })); } catch (e) {}
+  });
+  cloud.addEventListener('pointerenter', e => {
+    if (e.pointerType === 'mouse') { refresh(); setOpen(true); }
+  });
+  cloud.addEventListener('pointerleave', e => {
+    if (e.pointerType === 'mouse' && !pinned) setOpen(false);
+  });
+  cloud.addEventListener('click', e => {
+    if (dragged) { dragged = false; return; }
+    if (e.target.closest('.cloud-panel')) return;
+    if (e.pointerType === 'mouse') { pinned = !pinned; setOpen(pinned); return; }
+    const now = Date.now();
+    if (now - lastTap < 300) {
+      clearTimeout(tapTimer); lastTap = 0;
+      setOpen(true);
+      $id('qCloudInput').focus();
+    } else {
+      lastTap = now;
+      tapTimer = setTimeout(() => setOpen(!cloud.classList.contains('open')), 300);
+    }
+  });
+  document.addEventListener('click', e => {
+    if (cloud.contains(e.target)) return;
+    pinned = false;
+    setOpen(false);
+  });
+  $id('qCloudSend').onclick = async () => {
+    const v = $id('qCloudInput').value.trim();
+    if (!v) return;
+    try {
+      const r = await fetch('/api/questions', { method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: v }) });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      $id('qCloudInput').value = '';
+      toast(I.saved, 1400);
+      refresh();
+    } catch (e) { toast(I.fail + e.message, 2000); }
+  };
+  $id('qCloudInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); $id('qCloudSend').click(); }
+  });
+
+  refresh();
+})();
+</script>
+</body>
+</html>

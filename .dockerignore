@@ -1,0 +1,13 @@
+.venv/
+data/
+library/
+__pycache__/
+**/__pycache__/
+tools/
+*.png
+*.zip
+README.md
+start.bat
+docker-compose.yml
+Dockerfile
+.dockerignore
