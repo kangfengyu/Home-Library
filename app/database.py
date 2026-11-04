@@ -274,6 +274,43 @@ def verify_login(username: str, password: str) -> Optional[sqlite3.Row]:
     return row
 
 
+def set_user_password(uid: int, password: str) -> None:
+    if len(password or "") < 4:
+        raise ValueError("密码至少 4 位")
+    with _lock:
+        _check().execute("UPDATE users SET password_hash=? WHERE id=?",
+                         (hash_password(password), uid))
+        _conn.commit()
+
+
+def delete_user(uid: int) -> None:
+    """删除账户并级联清理其全部数据（进度/笔记/费曼/速读/问题/推荐）。"""
+    stmts = [
+        # 先删子表（按父表会话/任务关联），再删主表
+        "DELETE FROM feynman_messages WHERE session_id IN "
+        "(SELECT id FROM feynman_sessions WHERE user_id=?)",
+        "DELETE FROM feynman_sessions WHERE user_id=?",
+        "DELETE FROM speed_chunks WHERE job_id IN "
+        "(SELECT id FROM speed_jobs WHERE user_id=?)",
+        "DELETE FROM speed_job_cancel WHERE job_id IN "
+        "(SELECT id FROM speed_jobs WHERE user_id=?)",
+        "DELETE FROM speed_jobs WHERE user_id=?",
+        "DELETE FROM recommendation_recipients WHERE rid IN "
+        "(SELECT id FROM recommendations WHERE from_user=?) OR to_user=?",
+        "DELETE FROM recommendations WHERE from_user=?",
+        "DELETE FROM questions WHERE user_id=?",
+        "DELETE FROM notes WHERE user_id=?",
+        "DELETE FROM reading_stats WHERE user_id=?",
+        "DELETE FROM progress WHERE user_id=?",
+        "DELETE FROM sessions WHERE user_id=?",
+        "DELETE FROM users WHERE id=?",
+    ]
+    with _lock:
+        for s in stmts:
+            _conn.execute(s, (uid,) * s.count("?"))
+        _conn.commit()
+
+
 def create_session(user_id: int) -> str:
     token = secrets.token_urlsafe(32)
     execute("INSERT INTO sessions(token, user_id, created_at) VALUES(?,?,?)",

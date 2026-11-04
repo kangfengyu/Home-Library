@@ -790,6 +790,16 @@
         <div class="err" id="userErr" style="min-height:0; flex:1 1 100%; margin:0;"></div>
       </div>
 
+      <h3 class="sect-title" style="margin-top:34px;" data-i18n="passTitle">修改密码</h3>
+      <div class="qform" style="flex-direction:row; align-items:center; flex-wrap:wrap; gap:10px;">
+        <input type="password" id="oldPass" style="flex:1 1 130px; width:auto;"
+               data-i18n-ph="oldPassPh" placeholder="旧密码"/>
+        <input type="password" id="newPass2" style="flex:1 1 130px; width:auto;"
+               data-i18n-ph="newPass2Ph" placeholder="新密码（≥4 位）"/>
+        <button class="btn primary" id="passChange" data-i18n="passChangeBtn" style="flex:none;">修改密码</button>
+        <div class="err" id="passErr" style="min-height:0; flex:1 1 100%; margin:0;"></div>
+      </div>
+
       <h3 class="sect-title" style="margin-top:34px;" data-i18n="backupTitle">备份</h3>
       <div class="qform" style="flex-direction:row; align-items:center; flex-wrap:wrap; gap:12px;">
         <p style="flex:1 1 320px; font-size:12px; color:var(--sub); line-height:1.7; margin:0;"
@@ -1039,6 +1049,11 @@ const STR_I = {
     badCreds: '用户名或密码错误',
     users: '账户', usersTitle: '账户管理', newUser: '新用户名', newPass: '密码（≥4 位）',
     makeAdmin: '设为管理员', addUser: '添加账户', accountAdded: '账户已添加',
+    passTitle: '修改密码', oldPassPh: '旧密码', newPass2Ph: '新密码（≥4 位）',
+    passChangeBtn: '修改密码', passChanged: '密码已修改',
+    delUserBtn: '删除',
+    delUserAsk: u => '确定删除账户「' + u + '」？其阅读进度、笔记、考核与速读记录将一并删除，不可恢复。',
+    userDeleted: '账户已删除',
     exportBackup: '导出数据备份', backupDone: '✅ 备份已生成',
     backupDesc: '备份文件已直接生成在<b>服务器磁盘</b>上（绕开浏览器下载）：',
     backupNote: '在文件管理器中打开上述目录即可查看/拷贝（换设备时连同 library/ 目录一起迁移）',
@@ -1168,6 +1183,11 @@ const STR_I = {
     badCreds: 'Wrong username or password',
     users: 'Accounts', usersTitle: 'Accounts', newUser: 'New username', newPass: 'Password (≥4 chars)',
     makeAdmin: 'Set as admin', addUser: 'Add account', accountAdded: 'Account added',
+    passTitle: 'Change Password', oldPassPh: 'Current password', newPass2Ph: 'New password (≥4 chars)',
+    passChangeBtn: 'Change', passChanged: 'Password changed',
+    delUserBtn: 'Delete',
+    delUserAsk: u => 'Delete account "' + u + '"? All its progress, notes, tests and speed-read records will be permanently removed.',
+    userDeleted: 'Account deleted',
     exportBackup: 'Export backup', backupDone: '✅ Backup created',
     backupDesc: 'The backup file has been written directly to the <b>server disk</b> (bypassing browser downloads):',
     backupNote: 'Open that folder in your file manager to copy it (migrate together with the library/ folder when switching devices)',
@@ -1866,9 +1886,24 @@ async function renderUsers() {
     data.users.forEach(u => {
       const row = document.createElement('div');
       row.className = 'user-row';
-      row.innerHTML = `<span>👤 ${u.username}</span>` +
+      row.innerHTML = `<span>👤 ${esc(u.username)}</span>` +
         (u.is_admin ? '<span class="tag">' + t('adminTag') + '</span>' : '') +
         `<span style="flex:1"></span><span style="font-size:11px;color:var(--sub)">${fmtTime(u.created_at)}</span>`;
+      if (me && u.id !== me.id) {
+        const del = document.createElement('button');
+        del.className = 'btn';
+        del.style.cssText = 'flex:none;padding:4px 10px;font-size:12px;';
+        del.textContent = t('delUserBtn');
+        del.onclick = async () => {
+          if (!confirm(t('delUserAsk')(u.username))) return;
+          try {
+            await api('/api/auth/users/' + u.id, { method: 'DELETE' });
+            toast(t('userDeleted'));
+            renderUsers();
+          } catch (e) { toast(e.message, 3200); }
+        };
+        row.appendChild(del);
+      }
       list.appendChild(row);
     });
   } catch (e) { $('#userErr').textContent = e.message; }
@@ -1883,6 +1918,15 @@ $('#userAdd').onclick = async () => {
     toast(t('accountAdded'));
     renderUsers();
   } catch (e) { $('#userErr').textContent = e.message; }
+};
+$('#passChange').onclick = async () => {
+  $('#passErr').textContent = '';
+  try {
+    await api('/api/auth/password', { method: 'POST', body: JSON.stringify({
+      old_password: $('#oldPass').value, new_password: $('#newPass2').value }) });
+    $('#oldPass').value = ''; $('#newPass2').value = '';
+    toast(t('passChanged'));
+  } catch (e) { $('#passErr').textContent = e.message; }
 };
 
 /* ---------- 问题（Q&A）页 ---------- */

@@ -444,6 +444,32 @@ def api_add_user(request: Request, username: str = Body(...), password: str = Bo
     return {"id": uid, "username": username.strip()}
 
 
+@app.post("/api/auth/password")
+def api_change_password(request: Request, old_password: str = Body(...),
+                        new_password: str = Body(...)):
+    """当前登录用户修改自己的密码（需验证旧密码）。"""
+    user = _require_user(request)
+    if database.verify_login(user["username"], old_password) is None:
+        raise HTTPException(status_code=403, detail="旧密码不正确")
+    try:
+        database.set_user_password(user["id"], new_password)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"ok": True}
+
+
+@app.delete("/api/auth/users/{uid}")
+def api_delete_user(request: Request, uid: int):
+    """管理员删除账户（连带其全部数据）；不能删除自己，避免失去管理入口。"""
+    user = _require_admin(request)
+    if uid == user["id"]:
+        raise HTTPException(status_code=400, detail="不能删除当前登录的账户")
+    if database.query_one("SELECT id FROM users WHERE id=?", (uid,)) is None:
+        raise HTTPException(status_code=404, detail="账户不存在")
+    database.delete_user(uid)
+    return {"ok": True}
+
+
 # ---------------------------------------------------------------- 问题（Q&A）
 
 
