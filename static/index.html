@@ -199,7 +199,8 @@
                  cursor:grab; user-select:none; scrollbar-width:thin;
                  scrollbar-color:var(--line) transparent; }
   .recent-grid.dragging { cursor:grabbing; }
-  .recent-grid .slot { flex:0 0 152px; }
+  /* min-width:0 击破 flex 自动最小宽度：超长书名（nowrap）不会把卡撑破 152px */
+  .recent-grid .slot { flex:0 0 152px; min-width:0; }
   .slot { display:flex; flex-direction:column; }
   .slot .book { flex:1; }
   .slot .board { height:8px; margin-top:9px; border-radius:2px;
