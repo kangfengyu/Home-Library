@@ -171,6 +171,8 @@
   .coverbtn:hover { background:rgba(28,28,24,.88); color:#F3F0E9; }
   .recbtn { top:8px; right:8px; }
   .dlbtn { bottom:8px; left:14px; }
+  .delbtn { bottom:8px; right:8px; color:#E8A29B; }
+  .delbtn:hover { color:#F0907F; }
 
   /* ---------- 荐书 ---------- */
   .reco-card { display:flex; align-items:center; gap:12px; background:var(--panel);
@@ -1130,6 +1132,9 @@ const STR_I = {
     toast_notes: '种好你脑子里的语义树，叶子才有地方挂！',
     toast_me: '再大的问题通过拆解，都能在书里找到些答案！',
     recShort: '荐', dlBook: '下载原文件到本机',
+    delBook: '删除这本书',
+    delBookAsk: b => `确定删除《${b}》吗？\n\n书籍原文件、阅读进度、笔记及全部关联数据都会一起删除，不可恢复！`,
+    bookDeleted: '已删除', delBookFail: '删除失败：',
     switchedNight: '已切换夜读 · 乌木', switchedDay: '已切换日读 · 宣纸',
     tab_recent: '最近阅读', tab_library: '书架', tab_notes: '笔记',
     tab_questions: '问题', tab_settings: '设置',
@@ -1289,6 +1294,9 @@ const STR_I = {
     toast_notes: 'Grow the semantic tree in your mind, and the leaves will have a place to hang!',
     toast_me: 'Any big problem, once broken down, can find some of its answers in books!',
     recShort: 'Rec', dlBook: 'Download the original file',
+    delBook: 'Delete this book',
+    delBookAsk: b => `Delete "${b}"?\n\nThe file, reading progress, notes and all related data will be permanently removed!`,
+    bookDeleted: 'Deleted', delBookFail: 'Delete failed: ',
     switchedNight: 'Night mode · ebony', switchedDay: 'Day mode · paper',
     tab_recent: 'Recently read', tab_library: 'Shelf', tab_notes: 'Notes',
     tab_questions: 'Questions', tab_settings: 'Settings',
@@ -2225,8 +2233,7 @@ function bookCard(b, allowLock) {
     el.querySelector('.cover-w').appendChild(rec);
   }
   // 管理员：书卡封面左上角私有开关（移入/移出暗格）
-  if (allowLock && me && me.is_admin) {
-    const lock = document.createElement('div');
+  if (allowLock && me && me.is_admin) {    const lock = document.createElement('div');
     lock.className = 'lock';
     lock.textContent = b.is_private ? '🔒' : '🔓';
     lock.title = b.is_private ? t('inVault') : t('toVault');
@@ -2241,6 +2248,25 @@ function bookCard(b, allowLock) {
       } catch (err) { toast(t('lockFail') + err.message); }
     };
     el.querySelector('.cover-w').appendChild(lock);
+  }
+  // 管理员：删除书籍（原文件 + 全部关联数据，confirm 二次确认）
+  if (me && me.is_admin) {
+    const del = document.createElement('div');
+    del.className = 'coverbtn delbtn';
+    del.textContent = '🗑';
+    del.title = t('delBook');
+    del.onclick = async e => {
+      e.stopPropagation();
+      if (!confirm(t('delBookAsk')(b.title))) return;
+      try {
+        await api(`/api/books/${b.id}`, { method: 'DELETE' });
+        toast(t('bookDeleted'));
+        if (curView === 'vault') loadVault();
+        else if (window._tagFilter) showTagBooks(window._tagFilter);
+        else load(curPath, false);
+      } catch (err) { toast(t('delBookFail') + err.message); }
+    };
+    el.querySelector('.cover-w').appendChild(del);
   }
   return el;
 }

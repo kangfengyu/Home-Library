@@ -259,6 +259,34 @@ async def api_scan():
     return {"started": True}
 
 
+@app.delete("/api/books/{book_id}")
+def api_delete_book(request: Request, book_id: int):
+    """管理员删书：删除书籍原文件 + 封面缓存 + 全部关联数据（不可恢复）。
+    荐学课程里指向该书的步骤自动退回「待入库」态。"""
+    _require_admin(request)
+    row = database.get_book(book_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="书籍不存在")
+    rel_path, cover_file = row["rel_path"], row["cover_file"] or ""
+    database.delete_book(book_id)          # 先清记录（此后 rel_path 仅存于本函数局部）
+    file_deleted = False
+    try:
+        p = _resolve_rel(rel_path)
+        if p.exists():
+            p.unlink()
+            file_deleted = True
+    except OSError:
+        pass
+    if cover_file:
+        try:
+            c = config.COVER_DIR / cover_file
+            if c.exists():
+                c.unlink()
+        except OSError:
+            pass
+    return {"ok": True, "file_deleted": file_deleted}
+
+
 _ALLOWED_BOOK_EXT = {".epub", ".pdf", ".cbz", ".cbr"}
 
 

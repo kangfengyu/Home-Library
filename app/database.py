@@ -372,6 +372,52 @@ def delete_user(uid: int) -> None:
         _conn.commit()
 
 
+def delete_book(book_id: int) -> None:
+    """管理员删书：级联清理该书全部关联数据（进度/笔记/荐书/费曼/速读/复习/概念/老师问答）。
+    荐学课程里指向该书的步骤退回 book_id=0（外部书「待入库」态）。
+    书籍原文件与封面缓存由调用方（路由层）负责删除。"""
+    stmts = [
+        # 先删子表（按父表会话/任务关联），再删主表
+        "DELETE FROM feynman_messages WHERE session_id IN "
+        "(SELECT id FROM feynman_sessions WHERE book_id=?)",
+        "DELETE FROM feynman_sessions WHERE book_id=?",
+        "DELETE FROM speed_chunks WHERE job_id IN "
+        "(SELECT id FROM speed_jobs WHERE book_id=?)",
+        "DELETE FROM speed_job_cancel WHERE job_id IN "
+        "(SELECT id FROM speed_jobs WHERE book_id=?)",
+        "DELETE FROM speed_jobs WHERE book_id=?",
+        "DELETE FROM recommendation_recipients WHERE rid IN "
+        "(SELECT id FROM recommendations WHERE book_id=?)",
+        "DELETE FROM recommendations WHERE book_id=?",
+        "DELETE FROM review_items WHERE book_id=?",
+        "DELETE FROM concepts WHERE book_id=?",
+        "DELETE FROM tutor_qa WHERE book_id=?",
+        "DELETE FROM notes WHERE book_id=?",
+        "DELETE FROM progress WHERE book_id=?",
+        "DELETE FROM books WHERE id=?",
+    ]
+    with _lock:
+        for s in stmts:
+            _conn.execute(s, (book_id,) * s.count("?"))
+        # LIKE 粗筛 + step.book_id 精确匹配（避免整表逐行 json 解析）
+        rows = _conn.execute("SELECT id, plan FROM courses WHERE plan LIKE ?",
+                             (f'%{book_id}%',)).fetchall()
+        for row in rows:
+            try:
+                plan = json.loads(row["plan"])
+                steps = plan.get("steps") or []
+                if not any(st.get("book_id") == book_id for st in steps):
+                    continue
+                for st in steps:
+                    if st.get("book_id") == book_id:
+                        st["book_id"] = 0
+                _conn.execute("UPDATE courses SET plan=? WHERE id=?",
+                              (json.dumps(plan, ensure_ascii=False), row["id"]))
+            except (ValueError, TypeError, AttributeError):
+                continue
+        _conn.commit()
+
+
 def create_session(user_id: int) -> str:
     token = secrets.token_urlsafe(32)
     execute("INSERT INTO sessions(token, user_id, created_at) VALUES(?,?,?)",
