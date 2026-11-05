@@ -683,6 +683,7 @@
     </div>
     <div class="userbar hide" id="userRow">
       <span class="uname ui" id="uname"></span>
+      <button class="sbtn" id="mePassBtn" data-i18n-title="passTitle" title="修改密码">🔑</button>
       <button class="sbtn" id="logoutBtn" data-i18n="signOut">退出</button>
     </div>
   </div>
@@ -905,16 +906,6 @@
         <div class="err" id="userErr" style="min-height:0; flex:1 1 100%; margin:0;"></div>
       </div>
 
-      <h3 class="sect-title" style="margin-top:34px;" data-i18n="passTitle">修改密码</h3>
-      <div class="qform" style="flex-direction:row; align-items:center; flex-wrap:wrap; gap:10px;">
-        <input type="password" id="oldPass" style="flex:1 1 130px; width:auto;"
-               data-i18n-ph="oldPassPh" placeholder="旧密码"/>
-        <input type="password" id="newPass2" style="flex:1 1 130px; width:auto;"
-               data-i18n-ph="newPass2Ph" placeholder="新密码（≥4 位）"/>
-        <button class="btn primary" id="passChange" data-i18n="passChangeBtn" style="flex:none;">修改密码</button>
-        <div class="err" id="passErr" style="min-height:0; flex:1 1 100%; margin:0;"></div>
-      </div>
-
       <h3 class="sect-title" style="margin-top:34px;" data-i18n="backupTitle">备份</h3>
       <div class="qform" style="flex-direction:row; align-items:center; flex-wrap:wrap; gap:12px;">
         <p style="flex:1 1 320px; font-size:12px; color:var(--sub); line-height:1.7; margin:0;"
@@ -980,6 +971,23 @@
     <div class="row">
       <button class="btn" id="loginCancel" data-i18n="cancel">取消</button>
       <button class="btn primary" id="loginOk" data-i18n="signIn">登录</button>
+    </div>
+  </div>
+</div>
+
+<!-- 修改密码弹窗：设置页账户列表行内 / 顶栏 🔑 均唤起 -->
+<div id="passModal" class="overlay hide">
+  <div class="modal">
+    <h3><span data-i18n="passTitle">修改密码</span> · <span id="passTarget"></span></h3>
+    <label id="passOldLabel" data-i18n="oldPassPh">旧密码</label>
+    <input type="password" id="passOld" autocomplete="current-password"/>
+    <label data-i18n="newPass2Ph">新密码（≥4 位）</label>
+    <input type="password" id="passNew" autocomplete="new-password"
+           data-i18n-ph="newPass2Ph" placeholder="新密码（≥4 位）"/>
+    <div class="err" id="passErr"></div>
+    <div class="row">
+      <button class="btn" id="passCancel" data-i18n="cancel">取消</button>
+      <button class="btn primary" id="passOk" data-i18n="passChangeBtn">修改密码</button>
     </div>
   </div>
 </div>
@@ -1223,7 +1231,7 @@ const STR_I = {
     makeAdmin: '设为管理员', addUser: '添加账户', accountAdded: '账户已添加',
     passTitle: '修改密码', oldPassPh: '旧密码', newPass2Ph: '新密码（≥4 位）',
     passChangeBtn: '修改密码', passChanged: '密码已修改',
-    delUserBtn: '删除',
+    delUserBtn: '删除', rowPassBtn: '改密',
     delUserAsk: u => '确定删除账户「' + u + '」？其阅读进度、笔记、考核与速读记录将一并删除，不可恢复。',
     userDeleted: '账户已删除',
     exportBackup: '导出数据备份', backupDone: '✅ 备份已生成',
@@ -1383,7 +1391,7 @@ const STR_I = {
     makeAdmin: 'Set as admin', addUser: 'Add account', accountAdded: 'Account added',
     passTitle: 'Change Password', oldPassPh: 'Current password', newPass2Ph: 'New password (≥4 chars)',
     passChangeBtn: 'Change', passChanged: 'Password changed',
-    delUserBtn: 'Delete',
+    delUserBtn: 'Delete', rowPassBtn: 'Pass',
     delUserAsk: u => 'Delete account "' + u + '"? All its progress, notes, tests and speed-read records will be permanently removed.',
     userDeleted: 'Account deleted',
     exportBackup: 'Export backup', backupDone: '✅ Backup created',
@@ -1430,6 +1438,7 @@ function applyI18n() {
   document.title = t('brandTitle') + ' · LAN';
   document.querySelectorAll('[data-i18n]').forEach(el => el.textContent = t(el.dataset.i18n));
   document.querySelectorAll('[data-i18n-ph]').forEach(el => el.placeholder = t(el.dataset.i18nPh));
+  document.querySelectorAll('[data-i18n-title]').forEach(el => el.title = t(el.dataset.i18nTitle));
   document.querySelectorAll('[data-i18n-html]').forEach(el => el.innerHTML = t(el.dataset.i18nHtml));
   $('#pageTitle').textContent = t('view_' + curView);
   const tb = $('#themeBtn');
@@ -1550,7 +1559,7 @@ function switchView(view, push = true) {
 $$('.tab').forEach(tb => tb.onclick = () => {
   switchView(tb.dataset.view);
   // 进页提示语（书架 / 笔记）
-  const k = { library: 'toast_library', notes: 'toast_notes' }[tb.dataset.view];
+  const k = { desk: 'toast_me', library: 'toast_library', notes: 'toast_notes' }[tb.dataset.view];
   if (k) toast(t(k), 2800);
 });
 window.addEventListener('popstate', e => {
@@ -2510,6 +2519,14 @@ async function renderUsers() {
       row.innerHTML = `<span>👤 ${esc(u.username)}</span>` +
         (u.is_admin ? '<span class="tag">' + t('adminTag') + '</span>' : '') +
         `<span style="flex:1"></span><span style="font-size:11px;color:var(--sub)">${fmtTime(u.created_at)}</span>`;
+      if (me) {
+        const pw = document.createElement('button');
+        pw.className = 'btn';
+        pw.style.cssText = 'flex:none;padding:4px 10px;font-size:12px;';
+        pw.textContent = t('rowPassBtn');
+        pw.onclick = () => openPassModal(u.id, u.username);
+        row.appendChild(pw);
+      }
       if (me && u.id !== me.id) {
         const del = document.createElement('button');
         del.className = 'btn';
@@ -2540,12 +2557,32 @@ $('#userAdd').onclick = async () => {
     renderUsers();
   } catch (e) { $('#userErr').textContent = e.message; }
 };
-$('#passChange').onclick = async () => {
+/* ---------- 修改密码弹窗 ---------- */
+let passTarget = null;   // { id, username }；本人=需旧密码，他人=管理员直接重置
+function openPassModal(uid, uname) {
+  passTarget = { id: uid, username: uname };
+  $('#passTarget').textContent = uname;
+  $('#passErr').textContent = '';
+  $('#passOld').value = ''; $('#passNew').value = '';
+  const self = me && uid === me.id;
+  $('#passOldLabel').classList.toggle('hide', !self);
+  $('#passOld').classList.toggle('hide', !self);
+  $('#passModal').classList.remove('hide');
+  setTimeout(() => (self ? $('#passOld') : $('#passNew')).focus(), 50);
+}
+$('#mePassBtn').onclick = () => openPassModal(me.id, me.username);
+$('#passCancel').onclick = () => $('#passModal').classList.add('hide');
+$('#passModal').onclick = e => { if (e.target === $('#passModal')) $('#passModal').classList.add('hide'); };
+$('#passNew').addEventListener('keydown', e => { if (e.key === 'Enter') $('#passOk').click(); });
+$('#passOld').addEventListener('keydown', e => { if (e.key === 'Enter') $('#passOk').click(); });
+$('#passOk').onclick = async () => {
   $('#passErr').textContent = '';
   try {
-    await api('/api/auth/password', { method: 'POST', body: JSON.stringify({
-      old_password: $('#oldPass').value, new_password: $('#newPass2').value }) });
-    $('#oldPass').value = ''; $('#newPass2').value = '';
+    const body = { new_password: $('#passNew').value };
+    if (me && passTarget.id === me.id) body.old_password = $('#passOld').value;
+    else body.uid = passTarget.id;
+    await api('/api/auth/password', { method: 'POST', body: JSON.stringify(body) });
+    $('#passModal').classList.add('hide');
     toast(t('passChanged'));
   } catch (e) { $('#passErr').textContent = e.message; }
 };

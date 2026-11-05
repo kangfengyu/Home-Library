@@ -445,14 +445,22 @@ def api_add_user(request: Request, username: str = Body(...), password: str = Bo
 
 
 @app.post("/api/auth/password")
-def api_change_password(request: Request, old_password: str = Body(...),
-                        new_password: str = Body(...)):
-    """当前登录用户修改自己的密码（需验证旧密码）。"""
+def api_change_password(request: Request, new_password: str = Body(...),
+                        old_password: str = Body(""), uid: int = Body(0)):
+    """修改密码：本人改需验证旧密码（任何登录用户可用）；
+    带 uid 且非本人时仅管理员可重置他人密码（无需旧密码）。"""
     user = _require_user(request)
-    if database.verify_login(user["username"], old_password) is None:
-        raise HTTPException(status_code=403, detail="旧密码不正确")
+    if uid and uid != user["id"]:
+        _require_admin(request)
+        target = database.query_one("SELECT id, username FROM users WHERE id=?", (uid,))
+        if target is None:
+            raise HTTPException(status_code=404, detail="账户不存在")
+    else:
+        target = user
+        if database.verify_login(user["username"], old_password) is None:
+            raise HTTPException(status_code=403, detail="旧密码不正确")
     try:
-        database.set_user_password(user["id"], new_password)
+        database.set_user_password(target["id"], new_password)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"ok": True}
