@@ -821,6 +821,178 @@ def api_book_outline(request: Request, book_id: int):
     if database.get_book(book_id) is None:
         raise HTTPException(status_code=404, detail="书籍不存在")
     return database.book_outline(book_id)
+
+
+# ---------------------------------------------------------------- AI荐学（学习课程）
+
+import speedread as _speedread
+
+
+def _learn_catalog(user: dict) -> tuple[list, dict]:
+    """书库目录（前 200 本 + 速读章节信息）；返回 (catalog, id->entry)。"""
+    priv = " AND is_private=0" if not user["is_admin"] else ""
+    rows = database.query_all(
+        f"SELECT id, title, author, description FROM books WHERE 1=1{priv} "
+        "ORDER BY updated_at DESC LIMIT 200") or []
+    catalog, by_id = [], {}
+    for r in rows:
+        ent = {"book_id": r["id"], "title": r["title"] or "",
+               "author": r["author"] or "", "desc": (r["description"] or "")[:120],
+               "chapters": []}
+        ol = database.book_outline(r["id"])
+        if ol["chapters"] or ol["load_bearing"]:
+            labels = {c["label"] for c in ol["chapters"]}
+            ent["chapters"] = sorted(labels)[:12] + [lb for lb in ol["load_bearing"]
+                                                     if lb not in labels][:4]
+        catalog.append(ent)
+        by_id[r["id"]] = ent
+    return catalog, by_id
+
+
+_LEARN_SYSTEM = (
+    "你是一位严谨的学习规划师，服务对象是书房主人。用户给出学习目标，"
+    "你把目标拆解为一门循序渐进的课程。\n"
+    "书籍来源规则：\n"
+    "1. 【书单】是书房已有的书，优先使用，引用其 book_id。\n"
+    "2. 书单铺不出最优路径时，可以推荐书单外的好书：此时 book_id 填 0，"
+    "必须给出 title 和 author，focus 留空数组。\n"
+    "3. focus 重点章节只能取该书 chapters 列表里出现过的名称；"
+    "chapters 为空的书或外部书一律 focus=[]。\n"
+    "4. 步骤 3-6 个为宜，按学习先后排序。\n"
+    "只输出一个 JSON 对象，不要 markdown 代码块：\n"
+    '{"title":"课程名（12字内）","intro":"课程设计思路，80字内",'
+    '"steps":[{"book_id":123,"title":"书名","author":"作者",'
+    '"why":"它在课程中的角色，50字内",'
+    '"focus":["重点章节"],"outcome":"读完应达到的状态，40字内"}]}'
+)
+
+
+def _postprocess_steps(steps: list, by_id: dict) -> list:
+    out = []
+    for st in steps:
+        if not isinstance(st, dict):
+            continue
+        bid = st.get("book_id") or 0
+        title = (st.get("title") or "").strip()
+        if bid and bid in by_id:
+            ent = by_id[bid]
+            focus = [f for f in (st.get("focus") or []) if f in ent["chapters"]][:4]
+            out.append({"book_id": bid, "title": ent["title"], "author": ent["author"],
+                        "why": (st.get("why") or "")[:80], "focus": focus,
+                        "outcome": (st.get("outcome") or "")[:60]})
+        else:
+            if not title:
+                continue
+            out.append({"book_id": 0, "title": title[:80],
+                        "author": (st.get("author") or "")[:40],
+                        "why": (st.get("why") or "")[:80], "focus": [],
+                        "outcome": (st.get("outcome") or "")[:60]})
+    return out[:6] or None
+
+
+async def _gen_plan(user: dict, goal: str, chat: list) -> dict:
+    catalog, by_id = _learn_catalog(user)
+    user_msg = ("学习目标：" + goal + "\n\n书房书单（含速读分析的章节信息；"
+                "book_id=0 表示书房还没有）：\n"
+                + json.dumps(catalog, ensure_ascii=False))
+    raw = await asyncio.to_thread(
+        _llm_request, _llm_cfg(),
+        [{"role": m["role"], "content": m["content"]} for m in chat[:-1]] +
+        [{"role": "user", "content": user_msg}],
+        system=_LEARN_SYSTEM, max_tokens=2500, timeout=120)
+    data = _speedread.parse_json_tolerant(raw)
+    if not data or not isinstance(data.get("steps"), list):
+        raise HTTPException(status_code=502, detail="AI 返回的课程格式异常，请重试")
+    steps = _postprocess_steps(data["steps"], by_id)
+    if not steps:
+        raise HTTPException(status_code=502, detail="AI 未能给出有效课程步骤，请换个说法重试")
+    return {"title": (data.get("title") or "课程")[:40],
+            "intro": (data.get("intro") or "")[:160], "steps": steps}
+
+
+@app.post("/api/learn/plan")
+async def api_learn_plan(request: Request, payload: dict = Body(...)):
+    user = _require_user(request)
+    goal = (payload.get("goal") or "").strip()
+    if len(goal) < 8:
+        raise HTTPException(status_code=400, detail="目标说详细一点（至少 8 个字）")
+    chat = [{"role": "user", "content": goal}]
+    plan = await _gen_plan(user, goal, chat)
+    chat.append({"role": "assistant",
+                 "content": plan["title"] + "：" + plan["intro"]})
+    cid = database.create_course(user["id"], plan["title"], goal, plan, chat)
+    return {"id": cid, "plan": plan}
+
+
+@app.post("/api/learn/plan/{cid}/refine")
+async def api_learn_refine(request: Request, cid: int, payload: dict = Body(...)):
+    user = _require_user(request)
+    c = database.get_course(user["id"], cid)
+    if c is None:
+        raise HTTPException(status_code=404, detail="课程不存在")
+    goal = (payload.get("goal") or "").strip()
+    if not goal:
+        raise HTTPException(status_code=400, detail="请说想怎么调整")
+    chat = json.loads(c["chat"]) if c["chat"] else []
+    chat.append({"role": "user", "content": goal})
+    plan = await _gen_plan(user, goal, chat)
+    chat.append({"role": "assistant", "content": plan["title"] + "：" + plan["intro"]})
+    database.update_course(user["id"], cid, plan=plan, chat=chat,
+                           title=plan["title"], step_now=0)
+    return {"id": cid, "plan": plan}
+
+
+@app.get("/api/learn/courses")
+def api_learn_courses(request: Request):
+    user = _require_user(request)
+    out = []
+    for c in database.list_courses(user["id"]):
+        item = dict(c)
+        item["plan"] = json.loads(c["plan"]) if c["plan"] else {}
+        item["chat"] = json.loads(c["chat"]) if c["chat"] else []
+        out.append(item)
+    return {"courses": out}
+
+
+@app.put("/api/learn/courses/{cid}")
+def api_learn_update(request: Request, cid: int, payload: dict = Body(...)):
+    user = _require_user(request)
+    if not database.update_course(user["id"], cid,
+                                  step_now=payload.get("step_now"),
+                                  status=payload.get("status")):
+        raise HTTPException(status_code=404, detail="课程不存在")
+    return {"ok": True}
+
+
+@app.post("/api/learn/courses/{cid}/steps/{idx}/link")
+def api_learn_link(request: Request, cid: int, idx: int, payload: dict = Body(...)):
+    user = _require_user(request)
+    try:
+        book_id = int(payload.get("book_id"))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="book_id 不合法")
+    c = database.get_course(user["id"], cid)
+    if c is None:
+        raise HTTPException(status_code=404, detail="课程不存在")
+    book = database.get_book(book_id)
+    if book is None:
+        raise HTTPException(status_code=404, detail="书籍不存在")
+    plan = json.loads(c["plan"]) if c["plan"] else {}
+    steps = plan.get("steps") or []
+    if not (0 <= idx < len(steps)):
+        raise HTTPException(status_code=404, detail="步骤不存在")
+    steps[idx].update({"book_id": book_id, "title": book["title"],
+                       "author": book["author"] or ""})
+    database.update_course(user["id"], cid, plan=plan)
+    return {"ok": True}
+
+
+@app.delete("/api/learn/courses/{cid}")
+def api_learn_delete(request: Request, cid: int):
+    user = _require_user(request)
+    if not database.delete_course(user["id"], cid):
+        raise HTTPException(status_code=404, detail="课程不存在")
+    return {"ok": True}
     return {"ok": True}
 
 

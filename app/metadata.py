@@ -354,6 +354,12 @@ def process_book(book_id: int) -> bool:
             new_cover, fields["meta_status"], fields["updated_at"], book_id,
         ),
     )
+    try:        # 新书入库：AI荐学课程里等这本书的外部步自动接上
+        hits = database.link_pending_steps(book_id, fields["title"], fields["author"])
+        if hits:
+            log.info("课程外部步自动关联: %s × %d", fields["title"], hits)
+    except Exception:
+        log.exception("课程外部步自动关联失败（忽略）")
     return fields["meta_status"] == 1
 
 

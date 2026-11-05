@@ -410,6 +410,47 @@
   .cg-book { font-size:12.5px; font-weight:600; display:block; }
   .cg-why { font-size:11.5px; color:var(--sub); }
   .cg-btns { display:flex; gap:6px; flex:0 0 auto; }
+  /* 书桌 · 课程卡 */
+  .course-card { display:flex; align-items:center; gap:10px; background:var(--panel);
+                 border:1px solid var(--line); border-radius:8px; padding:10px 14px;
+                 margin-bottom:8px; flex-wrap:wrap; }
+  .course-card .cc-main b { font-size:13.5px; display:block; }
+  .course-card .cc-step { font-size:11.5px; color:var(--sub); }
+  .course-card .cc-btns { margin-left:auto; display:flex; gap:6px; }
+  /* AI荐学 */
+  .learn-wrap { display:grid; grid-template-columns:220px 1fr; gap:16px; }
+  .learn-side { border-right:1px solid var(--line); padding-right:12px; }
+  .learn-main { min-height:60vh; display:flex; flex-direction:column; }
+  #lnChat { flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:10px;
+            padding-bottom:12px; }
+  .ln-msg { max-width:80%; padding:8px 12px; border-radius:10px; font-size:13px;
+            line-height:1.7; white-space:pre-wrap; word-break:break-word; }
+  .ln-user { align-self:flex-end; background:var(--panel2); border:1px solid var(--line); }
+  .ln-ai { align-self:flex-start; color:var(--sub); }
+  .ln-timeline { align-self:flex-start; width:100%; border:1px solid var(--line);
+                 border-radius:10px; background:var(--panel); padding:12px; }
+  .ln-intro { font-size:12px; color:var(--sub); margin:0 0 10px; line-height:1.7; }
+  .ln-step { display:flex; gap:10px; padding:8px 0; border-top:1px dashed var(--line); }
+  .ln-step:first-of-type { border-top:none; }
+  .ln-step .ls-no { flex:0 0 22px; height:22px; border-radius:50%; border:1px solid var(--line);
+                    display:flex; align-items:center; justify-content:center;
+                    font-size:11px; color:var(--sub); font-family:Manrope,monospace; }
+  .ln-step.done .ls-no { background:#4a7a4a; color:#fff; border-color:#4a7a4a; }
+  .ln-step.cur .ls-no { border-color:#C28E5C; color:#C28E5C; }
+  .ls-body { flex:1; min-width:0; font-size:12.5px; }
+  .ls-book { font-weight:600; }
+  .ls-why { color:var(--sub); font-size:11.5px; margin-top:2px; }
+  .ls-focus { margin-top:4px; display:flex; gap:4px; flex-wrap:wrap; }
+  .ls-out { font-size:11.5px; color:var(--sub); margin-top:3px; }
+  .ls-btns { margin-top:6px; display:flex; gap:6px; }
+  .chip.pending { color:#b8860b; border-color:#b8860b; cursor:default; }
+  .ln-input { display:flex; gap:8px; align-items:flex-end; border-top:1px solid var(--line);
+              padding-top:10px; }
+  .ln-input textarea { flex:1; resize:none; }
+  @media (max-width:760px) {
+    .learn-wrap { grid-template-columns:1fr; }
+    .learn-side { border-right:none; border-bottom:1px solid var(--line); padding:0 0 10px; }
+  }
   .fy-sessions { display:flex; flex-direction:column; gap:6px; max-height:430px; overflow-y:auto; }
   .fy-session { background:var(--panel); border:1px solid var(--line); border-radius:8px;
                 padding:9px 12px; cursor:pointer; font-size:12.5px; }
@@ -602,6 +643,9 @@
     <button class="tab" data-view="library">
       <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h3v16H4zM10 4h3v16h-3zM16.5 4.5l3 .5-2.5 15-3-.5z"/></svg></span>
       <span data-i18n="tab_library">书架</span></button>
+    <button class="tab" data-view="learn">
+      <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
+      <span data-i18n="tab_learn">AI荐学</span></button>
     <button class="tab" data-view="feynman">
       <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.5 8.5 0 01-8.5 8.5 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8A8.5 8.5 0 0112.5 3a8.5 8.5 0 018.5 8.5z"/><path d="M8.5 10h8"/><path d="M8.5 13.5h5"/></svg></span>
       <span data-i18n="tab_feynman">费曼考核</span></button>
@@ -663,6 +707,10 @@
         <div class="recent-grid" id="recentGrid"></div>
         <div id="recentEmpty" class="empty hide"></div>
       </div>
+      <div class="desk-sec hide" id="deskCourseSec">
+        <h3 class="sect-title" data-i18n="myCourses">我的课程</h3>
+        <div id="deskCourses"></div>
+      </div>
       <div class="desk-sec hide" id="deskConceptSec">
         <h3 class="sect-title" data-i18n="conceptTitle">概念库</h3>
         <div class="concept-chips" id="conceptChips"></div>
@@ -685,6 +733,25 @@
       <div id="recoSent"></div>
       <p style="font-size:11.5px; color:var(--sub); margin:8px 2px;" data-i18n="recoTip">
         在书库或最近阅读的书封上点「荐」即可把书推荐给家人。</p>
+    </section>
+
+    <!-- AI荐学：学习规划 chat -->
+    <section id="view-learn" class="hide">
+      <div class="learn-wrap">
+        <aside class="learn-side">
+          <div class="subtle-h" data-i18n="learnHistory">我的课程</div>
+          <div class="fy-sessions" id="lnCourses"></div>
+          <button class="btn" id="lnNew" style="margin-top:10px;" data-i18n="learnNew">＋ 全新目标</button>
+        </aside>
+        <div class="learn-main">
+          <div id="lnChat"></div>
+          <div class="ln-input">
+            <textarea id="lnGoal" rows="2" data-i18n-ph="learnPh"
+              placeholder="告诉我你想学什么、解决什么问题、达到什么程度…"></textarea>
+            <button class="btn primary" id="lnSend" data-i18n="learnSend">生成课程</button>
+          </div>
+        </div>
+      </div>
     </section>
 
     <!-- 费曼考核：把书讲给 AI 小白听 -->
@@ -956,6 +1023,16 @@
   </div>
 </div>
 
+<!-- 关联外部书弹层 -->
+<div id="linkModal" class="overlay hide">
+  <div class="modal" style="max-width:480px;">
+    <h3 data-i18n="stepLink" style="margin-top:0;">关联此书</h3>
+    <input id="linkQ" type="search" style="width:100%;" data-i18n-ph="pickSearchPh"
+           placeholder="搜索书名 / 作者…">
+    <div class="pick-list" id="linkList" style="max-height:300px; margin-top:8px;"></div>
+  </div>
+</div>
+
 <!-- 概念库弹层 -->
 <div id="conceptModal" class="overlay hide">
   <div class="modal" style="max-width:560px;">
@@ -1094,6 +1171,15 @@ const STR_I = {
     conceptTitle: '概念库', conceptAll: '查看全部',
     conceptInBooks: n => `出现在 ${n} 本书`,
     conceptToReview: '加入复习', conceptPh: '搜索概念…',
+    tab_learn: 'AI荐学', view_learn: 'AI荐学', learnHistory: '我的课程',
+    myCourses: '我的课程', courseStep: (a, b) => `第 ${a}/${b} 步`,
+    courseNext: '下一本', courseGo: '继续学习',
+    learnPh: '告诉我你想学什么、解决什么问题、达到什么程度…',
+    learnSend: '生成课程', learnNew: '＋ 全新目标',
+    learnIntroNoCourse: '输入学习目标，AI 会基于你的书架规划一门循序渐进的课程（书架没有的书也会推荐，上传后自动接上）',
+    learnRefining: '正在规划…',
+    stepPending: '待入库', stepLink: '关联此书', stepLinked: '已关联',
+    stepOutcome: '读完你会',
     searchPh: '搜索书名 / 作者…', rescan: '↻ 重新扫描',
     ready: '就绪', scanning: n => `扫描中… 待处理 ${n}`, booksN: n => `藏书 ${n} 种`,
     shelfTitle: '最近阅读 · 书案陈编',
@@ -1238,6 +1324,15 @@ const STR_I = {
     conceptTitle: 'Concepts', conceptAll: 'View all',
     conceptInBooks: n => `in ${n} book(s)`,
     conceptToReview: 'To review', conceptPh: 'Search concepts…',
+    tab_learn: 'AI Learn', view_learn: 'AI Learn', learnHistory: 'My courses',
+    myCourses: 'My courses', courseStep: (a, b) => `Step ${a}/${b}`,
+    courseNext: 'Next book', courseGo: 'Continue',
+    learnPh: 'Tell me what you want to learn, solve, or achieve…',
+    learnSend: 'Plan course', learnNew: '＋ New goal',
+    learnIntroNoCourse: 'Enter a learning goal — AI plans a course from your shelf (books not on the shelf are also recommended and link up automatically once uploaded)',
+    learnRefining: 'Planning…',
+    stepPending: 'To add', stepLink: 'Link book', stepLinked: 'Linked',
+    stepOutcome: 'After reading you will',
     searchPh: 'Search title / author…', rescan: '↻ Rescan',
     ready: 'Ready', scanning: n => `Scanning… ${n} pending`, booksN: n => `${n} books`,
     shelfTitle: 'Recently read · on the desk',
@@ -1403,7 +1498,7 @@ function esc(s) {
 
 
 /* ================= 视图切换 ================= */
-const VIEWS = ['desk', 'library', 'feynman', 'speed', 'notes', 'questions', 'vault', 'settings'];
+const VIEWS = ['desk', 'library', 'learn', 'feynman', 'speed', 'notes', 'questions', 'vault', 'settings'];
 function switchView(view, push = true) {
   curView = view;
   $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.view === view));
@@ -1415,6 +1510,7 @@ function switchView(view, push = true) {
   $('#view-settings').classList.toggle('hide', view !== 'settings');
   $('#view-feynman').classList.toggle('hide', view !== 'feynman');
   $('#view-speed').classList.toggle('hide', view !== 'speed');
+  $('#view-learn').classList.toggle('hide', view !== 'learn');
   $('#search').classList.toggle('hide', view !== 'library');
   $('#rescanBtn').classList.toggle('hide', view !== 'library');
   $('#pageTitle').textContent = t('view_' + view);
@@ -1427,6 +1523,7 @@ function switchView(view, push = true) {
   if (view === 'settings') loadSettings();
   if (view === 'feynman') loadFeynman();
   if (view === 'speed') loadSpeed();
+  if (view === 'learn') loadLearn();
 }
 $$('.tab').forEach(tb => tb.onclick = () => {
   switchView(tb.dataset.view);
@@ -1446,7 +1543,195 @@ async function loadDesk() {
   loadReviewSummary();
   loadMe();
   loadConcepts();
+  loadDeskCourses();
 }
+
+/* ---- 我的课程（书桌卡） ---- */
+async function loadDeskCourses() {
+  const sec = $('#deskCourseSec'), box = $('#deskCourses');
+  if (!me) { sec.classList.add('hide'); return; }
+  try {
+    const d = await api('/api/learn/courses');
+    if (!d.courses.length) { sec.classList.add('hide'); return; }
+    sec.classList.remove('hide');
+    box.innerHTML = '';
+    d.courses.filter(c => c.status !== 'archived').forEach(c => renderCourseCard(c, box));
+  } catch (e) { if (e.message !== 'unauthorized') sec.classList.add('hide'); }
+}
+function renderCourseCard(c, box) {
+  const plan = c.plan || {}, steps = plan.steps || [];
+  const cur = steps[c.step_now] || steps[0];
+  const div = document.createElement('div');
+  div.className = 'course-card';
+  const curTitle = cur
+    ? (cur.book_id ? '《' + (cur.title || '') + '》' : t('stepPending') + '《' + (cur.title || '') + '》')
+    : '—';
+  div.innerHTML =
+    `<div class="cc-main"><b class="serif">${esc(c.title)}</b>
+       <span class="cc-step">${t('courseStep')(Math.min(c.step_now + 1, steps.length), steps.length)} · ${curTitle}</span></div>
+     <div class="cc-btns">
+       ${cur && cur.book_id ? `<button class="btn mini primary" data-act="go">${t('courseGo')}</button>` : ''}
+       ${c.step_now + 1 < steps.length ? `<button class="btn mini" data-act="next">${t('courseNext')}</button>` : ''}
+     </div>`;
+  div.querySelector('[data-act=go]').onclick = () =>
+    location.href = '/reader?id=' + cur.book_id;
+  const nx = div.querySelector('[data-act=next]');
+  if (nx) nx.onclick = async () => {
+    try {
+      await api('/api/learn/courses/' + c.id, { method: 'PUT',
+        body: JSON.stringify({ step_now: c.step_now + 1 }) });
+      loadDeskCourses();
+    } catch (e) { toast(e.message); }
+  };
+  box.appendChild(div);
+}
+
+/* ================= AI荐学 ================= */
+let lnCur = null;             // 当前课程 {id, plan, chat, step_now}
+async function loadLearn() {
+  if (!me) { $('#lnChat').innerHTML = '<div class="empty">' + t('spNeedLogin') + '</div>'; renderLnCourses(); return; }
+  renderLnCourses();
+  if (!lnCur) $('#lnChat').innerHTML = '<div class="empty">' + t('learnIntroNoCourse') + '</div>';
+  else renderLnChat();
+}
+async function renderLnCourses() {
+  const box = $('#lnCourses');
+  if (!me) { box.innerHTML = ''; return; }
+  try {
+    const d = await api('/api/learn/courses');
+    box.innerHTML = '';
+    d.courses.forEach(c => {
+      const el = document.createElement('div');
+      el.className = 'fy-session' + (lnCur && lnCur.id === c.id ? ' active' : '');
+      el.innerHTML = `<div class="fs-title">${esc(c.title)}</div>
+        <div class="fs-meta"><span>${t('courseStep')(Math.min(c.step_now + 1, (c.plan?.steps || []).length), (c.plan?.steps || []).length)}</span>
+        <button class="fs-del" title="删除" style="margin-left:auto;border:none;background:none;cursor:pointer;color:var(--sub);">✕</button></div>`;
+      el.onclick = () => { lnCur = c; renderLnChat(); renderLnCourses(); };
+      el.querySelector('.fs-del').onclick = async e => {
+        e.stopPropagation();
+        if (!confirm(t('fyDelConfirm'))) return;
+        try {
+          await api('/api/learn/courses/' + c.id, { method: 'DELETE' });
+          if (lnCur && lnCur.id === c.id) lnCur = null;
+          renderLnCourses(); loadDeskCourses();
+          if (!lnCur) $('#lnChat').innerHTML = '<div class="empty">' + t('learnIntroNoCourse') + '</div>';
+        } catch (err) { toast(err.message); }
+      };
+      box.appendChild(el);
+    });
+  } catch (e) { if (e.message !== 'unauthorized') toast(e.message); }
+}
+function renderLnChat() {
+  const box = $('#lnChat');
+  box.innerHTML = '';
+  if (!lnCur) return;
+  const chat = lnCur.chat || [];
+  let hasAssistant = false;
+  chat.forEach(m => {
+    const d = document.createElement('div');
+    d.className = 'ln-msg ' + (m.role === 'user' ? 'ln-user' : 'ln-ai');
+    d.textContent = m.content;
+    box.appendChild(d);
+    if (m.role === 'assistant') { hasAssistant = true; box.appendChild(renderTimeline(lnCur)); }
+  });
+  if (!hasAssistant && (lnCur.plan?.steps || []).length) box.appendChild(renderTimeline(lnCur));
+  box.scrollTop = 0;
+}
+function renderTimeline(c) {
+  const plan = c.plan || {}, steps = plan.steps || [];
+  const tl = document.createElement('div');
+  tl.className = 'ln-timeline';
+  if (plan.intro) {
+    const p = document.createElement('p');
+    p.className = 'ln-intro'; p.textContent = plan.intro;
+    tl.appendChild(p);
+  }
+  steps.forEach((st, i) => {
+    const d = document.createElement('div');
+    d.className = 'ln-step' + (i < c.step_now ? ' done' : i === c.step_now ? ' cur' : '');
+    const focusHtml = (st.focus || []).map(f => `<span class="chip" style="font-size:11px;">${esc(f)}</span>`).join(' ');
+    d.innerHTML =
+      `<div class="ls-no">${i + 1}</div>
+       <div class="ls-body">
+         <div class="ls-book">${st.book_id ? '📖' : '📥'} 《${esc(st.title || '')}》${st.author ? ' · ' + esc(st.author) : ''}
+           ${st.book_id ? '' : `<span class="chip pending">${t('stepPending')}</span>`}</div>
+         <div class="ls-why">${esc(st.why || '')}</div>
+         ${focusHtml ? `<div class="ls-focus">${focusHtml}</div>` : ''}
+         ${st.outcome ? `<div class="ls-out">${t('stepOutcome')}：${esc(st.outcome)}</div>` : ''}
+         <div class="ls-btns">
+           ${st.book_id ? `<button class="btn mini" data-act="read">${t('courseGo')}</button>` : `<button class="btn mini" data-act="link">${t('stepLink')}</button>`}
+         </div>
+       </div>`;
+    const rd = d.querySelector('[data-act=read]');
+    if (rd) rd.onclick = () => location.href = '/reader?id=' + st.book_id;
+    const lk = d.querySelector('[data-act=link]');
+    if (lk) lk.onclick = () => openLinkPicker(c.id, i);
+    tl.appendChild(d);
+  });
+  return tl;
+}
+$('#lnNew').onclick = () => { lnCur = null; renderLnCourses();
+  $('#lnChat').innerHTML = '<div class="empty">' + t('learnIntroNoCourse') + '</div>'; };
+$('#lnGoal').onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('#lnSend').onclick(); } };
+$('#lnSend').onclick = async () => {
+  if (!me) { openLogin(); return; }
+  const goal = $('#lnGoal').value.trim();
+  if (!goal) return;
+  const btn = $('#lnSend');
+  btn.disabled = true; btn.textContent = t('learnRefining');
+  try {
+    let d;
+    if (lnCur) {
+      d = await api('/api/learn/plan/' + lnCur.id + '/refine', { method: 'POST',
+        body: JSON.stringify({ goal }) });
+    } else {
+      d = await api('/api/learn/plan', { method: 'POST', body: JSON.stringify({ goal }) });
+    }
+    lnCur = { id: d.id, plan: d.plan, chat: [{ role: 'user', content: goal },
+      { role: 'assistant', content: d.plan.title + '：' + d.plan.intro }], step_now: 0 };
+    $('#lnGoal').value = '';
+    renderLnChat(); renderLnCourses(); loadDeskCourses();
+  } catch (e) { toast(e.message, 4200); }
+  finally { btn.disabled = false; btn.textContent = t('learnSend'); }
+};
+/* 关联外部书：小选书弹层 */
+let linkTarget = null;
+function openLinkPicker(cid, idx) {
+  linkTarget = { cid, idx };
+  $('#linkModal').classList.remove('hide');
+  if (!$('#linkQ').value) lnLinkLoad();
+}
+let linkTimer = null;
+$('#linkQ').oninput = () => { clearTimeout(linkTimer); linkTimer = setTimeout(lnLinkLoad, 300); };
+async function lnLinkLoad() {
+  const s = $('#linkQ').value.trim();
+  try {
+    const d = await api('/api/books/pick' + (s ? '?q=' + encodeURIComponent(s) : ''));
+    const box = $('#linkList');
+    box.innerHTML = '';
+    const books = d.q ? d.books : [...(d.recent || []), ...(d.latest || [])];
+    if (!books.length) { box.innerHTML = '<div class="pick-none">' + t('pickNone') + '</div>'; return; }
+    books.forEach(b => {
+      const el = document.createElement('div');
+      el.className = 'pick-row';
+      el.innerHTML = '<span class="pr-t">《' + esc(b.title || '') + '》</span>' +
+        (b.author ? '<span class="pr-a">' + esc(b.author) + '</span>' : '');
+      el.onclick = async () => {
+        try {
+          await api(`/api/learn/courses/${linkTarget.cid}/steps/${linkTarget.idx}/link`,
+            { method: 'POST', body: JSON.stringify({ book_id: b.id }) });
+          $('#linkModal').classList.add('hide');
+          toast(t('stepLinked'), 2200);
+          const d2 = await api('/api/learn/courses');
+          lnCur = d2.courses.find(x => x.id === linkTarget.cid) || lnCur;
+          renderLnChat(); renderLnCourses(); loadDeskCourses();
+        } catch (e) { toast(e.message); }
+      };
+      box.appendChild(el);
+    });
+  } catch (e) { toast(e.message); }
+}
+$('#linkModal').onclick = e => { if (e.target.id === 'linkModal') $('#linkModal').classList.add('hide'); };
 
 /* ---- 概念库 ---- */
 let conceptGroups = [];

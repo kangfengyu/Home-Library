@@ -705,6 +705,99 @@ def book_outline(book_id: int) -> dict:
     return {"chapters": chapters, "load_bearing": load_bearing}
 
 
+# ---------------------------------------------------------------- AI荐学（学习课程）
+
+
+def create_course(user_id: int, title: str, goal: str, plan: dict, chat: list) -> int:
+    now = time.time()
+    with _lock:
+        cur = _check().execute(
+            "INSERT INTO courses(user_id, title, goal, plan, chat, created_at, updated_at) "
+            "VALUES(?,?,?,?,?,?,?)",
+            (user_id, (title or "课程")[:40], goal or "",
+             json.dumps(plan, ensure_ascii=False),
+             json.dumps(chat, ensure_ascii=False), now, now))
+        _conn.commit()
+        return cur.lastrowid
+
+
+def update_course(user_id: int, cid: int, plan: Optional[dict] = None,
+                  chat: Optional[list] = None, title: Optional[str] = None,
+                  step_now: Optional[int] = None, status: Optional[str] = None) -> bool:
+    row = query_one("SELECT id FROM courses WHERE id=? AND user_id=?", (cid, user_id))
+    if row is None:
+        return False
+    sets, args = ["updated_at=?"], [time.time()]
+    if plan is not None:
+        sets.append("plan=?"); args.append(json.dumps(plan, ensure_ascii=False))
+    if chat is not None:
+        sets.append("chat=?"); args.append(json.dumps(chat, ensure_ascii=False))
+    if title:
+        sets.append("title=?"); args.append(title[:40])
+    if step_now is not None and step_now >= 0:
+        sets.append("step_now=?"); args.append(int(step_now))
+    if status in ("active", "done", "archived"):
+        sets.append("status=?"); args.append(status)
+    args.append(cid)
+    execute(f"UPDATE courses SET {', '.join(sets)} WHERE id=?", tuple(args))
+    return True
+
+
+def get_course(user_id: int, cid: int):
+    return query_one("SELECT * FROM courses WHERE id=? AND user_id=?", (cid, user_id))
+
+
+def list_courses(user_id: int, include_archived: bool = False) -> list:
+    sql = "SELECT * FROM courses WHERE user_id=?"
+    if not include_archived:
+        sql += " AND status!='archived'"
+    sql += " ORDER BY updated_at DESC"
+    return query_all(sql, (user_id,))
+
+
+def delete_course(user_id: int, cid: int) -> bool:
+    row = query_one("SELECT id FROM courses WHERE id=? AND user_id=?", (cid, user_id))
+    if row is None:
+        return False
+    execute("DELETE FROM courses WHERE id=?", (cid,))
+    return True
+
+
+def _norm_title(s: str) -> str:
+    """标题归一化：去空白、常见全角转半角、casefold。"""
+    out = (s or "").strip().casefold()
+    return (out.replace("：", ":").replace("（", "(").replace("）", ")")
+               .replace("　", "").replace(" ", ""))
+
+
+def link_pending_steps(book_id: int, title: str, author: str = "") -> int:
+    """新书入库后：把所有课程里 book_id=0 且标题归一化相等的外部步回填 book_id。"""
+    if not title:
+        return 0
+    nt = _norm_title(title)
+    hit = 0
+    rows = query_all("SELECT id, plan FROM courses WHERE plan LIKE '%\"book_id\": 0%' "
+                     "OR plan LIKE '%\"book_id\":0%'")
+    for r in rows:
+        try:
+            plan = json.loads(r["plan"])
+        except Exception:
+            continue
+        changed = False
+        for st in plan.get("steps") or []:
+            if isinstance(st, dict) and not st.get("book_id") and \
+                    _norm_title(st.get("title") or "") == nt and nt:
+                st["book_id"] = book_id
+                if author and not st.get("author"):
+                    st["author"] = author
+                changed = True
+                hit += 1
+        if changed:
+            execute("UPDATE courses SET plan=?, updated_at=? WHERE id=?",
+                    (json.dumps(plan, ensure_ascii=False), time.time(), r["id"]))
+    return hit
+
+
 # ---------------------------------------------------------------- AI 速读（Map-Reduce 流水线）
 
 
