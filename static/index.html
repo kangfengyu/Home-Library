@@ -450,8 +450,8 @@
   .tutor-card .tc-a { cursor:pointer; }
   .tutor-card .tc-btns { margin-top:6px; display:flex; gap:6px; }
   /* AI荐学（壳复用费曼 fy-*，这里只留课程时间线） */
-  .ln-timeline { border:1px solid var(--line);
-                 border-radius:10px; background:var(--panel); padding:12px; }
+  .ln-timeline { border:1px solid var(--line); border-radius:10px; background:var(--panel);
+                 padding:12px; white-space:normal; }   /* 抵消 fy-bubble 的 pre-wrap：模板缩进不再渲染成空行 */
   .ln-intro { font-size:12px; color:var(--sub); margin:0 0 10px; line-height:1.7; }
   .ln-step { display:flex; gap:10px; padding:8px 0; border-top:1px dashed var(--line); }
   .ln-step:first-of-type { border-top:none; }
@@ -460,9 +460,20 @@
                     font-size:11px; color:var(--sub); font-family:Manrope,monospace; }
   .ln-step.done .ls-no { background:#4a7a4a; color:#fff; border-color:#4a7a4a; }
   .ln-step.cur .ls-no { border-color:#C28E5C; color:#C28E5C; }
+  /* 步骤书卡：封面缩略图 + 右侧紧凑信息（对齐站点卡片风格） */
+  .ls-card { flex:1; min-width:0; display:flex; gap:12px; padding:10px 12px;
+             background:var(--panel); border:1px solid var(--line); border-radius:8px; }
+  .ln-step.cur .ls-card { border-color:#C28E5C; }
+  .ls-cover { flex:0 0 48px; width:48px; aspect-ratio:100/145; border-radius:4px; overflow:hidden;
+              background:var(--panel2); display:flex; align-items:center; justify-content:center;
+              padding:4px; text-align:center; font-size:10px; line-height:1.45;
+              color:var(--sub); font-family:"Noto Serif SC",serif; word-break:break-all; }
+  .ls-cover img { width:100%; height:100%; object-fit:cover; }
   .ls-body { flex:1; min-width:0; font-size:12.5px; }
-  .ls-book { font-weight:600; }
-  .ls-why { color:var(--sub); font-size:11.5px; margin-top:2px; }
+  .ls-book { font-weight:600; display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+  .ls-book .ls-author { font-weight:400; color:var(--sub); font-size:11.5px; }
+  .ls-why { color:var(--sub); font-size:11.5px; margin-top:2px; line-height:1.6;
+            display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
   .ls-focus { margin-top:4px; display:flex; gap:4px; flex-wrap:wrap; }
   .ls-out { font-size:11.5px; color:var(--sub); margin-top:3px; }
   .ls-btns { margin-top:6px; display:flex; gap:6px; }
@@ -1820,16 +1831,22 @@ function renderTimeline(c) {
     const d = document.createElement('div');
     d.className = 'ln-step' + (i < c.step_now ? ' done' : i === c.step_now ? ' cur' : '');
     const focusHtml = (st.focus || []).map(f => `<span class="chip" style="font-size:11px;">${esc(f)}</span>`).join(' ');
+    const cover = st.book_id
+      ? `<img src="/api/cover/${st.book_id}" alt="">`
+      : `<span>${esc(st.title || '')}</span>`;
     d.innerHTML =
       `<div class="ls-no">${i + 1}</div>
-       <div class="ls-body">
-         <div class="ls-book">${st.book_id ? '📖' : '📥'} 《${esc(st.title || '')}》${st.author ? ' · ' + esc(st.author) : ''}
-           ${st.book_id ? '' : `<span class="chip pending">${t('stepPending')}</span>`}</div>
-         <div class="ls-why">${esc(st.why || '')}</div>
-         ${focusHtml ? `<div class="ls-focus">${focusHtml}</div>` : ''}
-         ${st.outcome ? `<div class="ls-out">${t('stepOutcome')}：${esc(st.outcome)}</div>` : ''}
-         <div class="ls-btns">
-           ${st.book_id ? `<button class="btn mini" data-act="read">${t('courseGo')}</button>` : `<button class="btn mini" data-act="link">${t('stepLink')}</button>`}
+       <div class="ls-card">
+         <div class="ls-cover">${cover}</div>
+         <div class="ls-body">
+           <div class="ls-book">《${esc(st.title || '')}》${st.author ? `<span class="ls-author">· ${esc(st.author)}</span>` : ''}
+             ${st.book_id ? '' : `<span class="chip pending">${t('stepPending')}</span>`}</div>
+           <div class="ls-why">${esc(st.why || '')}</div>
+           ${focusHtml ? `<div class="ls-focus">${focusHtml}</div>` : ''}
+           ${st.outcome ? `<div class="ls-out">${t('stepOutcome')}：${esc(st.outcome)}</div>` : ''}
+           <div class="ls-btns">
+             ${st.book_id ? `<button class="btn mini" data-act="read">${t('courseGo')}</button>` : `<button class="btn mini" data-act="link">${t('stepLink')}</button>`}
+           </div>
          </div>
        </div>`;
     const rd = d.querySelector('[data-act=read]');
