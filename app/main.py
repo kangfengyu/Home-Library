@@ -157,8 +157,12 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 @app.get("/api/explore")
-def api_explore(request: Request, path: str = ""):
-    """列出指定目录下的子文件夹与书籍文件。path 为库内相对路径。"""
+def api_explore(request: Request, path: str = "", limit: int = 200, offset: int = 0):
+    """列出指定目录下的子文件夹与书籍文件。path 为库内相对路径。
+
+    书籍分页（默认 200/批 + total 总数）：几千本平铺在同一目录时
+    避免一次性返回/渲染导致卡顿，前端点「加载更多」取下一批。
+    """
     viewer = _current_user(request)
     d = _resolve_rel(path)
     if not d.exists():
@@ -185,8 +189,13 @@ def api_explore(request: Request, path: str = ""):
             if row is not None and not (row["is_private"] and not (viewer and viewer["is_admin"])):
                 books.append(_book_json(row))
     rel = d.relative_to(config.LIBRARY_ROOT).as_posix()
+    total = len(books)
+    limit = max(1, min(limit, 1000))
+    offset = max(0, offset)
+    books = books[offset:offset + limit]
     return {"path": "" if rel == "." else rel,
-            "root": str(config.LIBRARY_ROOT), "folders": folders, "books": books}
+            "root": str(config.LIBRARY_ROOT), "folders": folders, "books": books,
+            "total": total}
 
 
 @app.get("/api/book/{book_id}")
@@ -1564,13 +1573,21 @@ def api_tags(request: Request):
 
 
 @app.get("/api/books")
-def api_books_by_tag(request: Request, tag: str = Query(..., min_length=1)):
-    """按标签列出书籍集合（跨目录）。"""
+def api_books_by_tag(request: Request, tag: str = Query(..., min_length=1),
+                     limit: int = 200, offset: int = 0):
+    """按标签列出书籍集合（跨目录）；与目录浏览同样分页（大标签几千本不卡）。"""
     viewer = _current_user(request)
     like = f'%"{tag.strip()}"%'
-    rows = database.query_all("SELECT * FROM books WHERE tags LIKE ? ORDER BY title", (like,))
-    rows = [r for r in rows if not (r["is_private"] and not (viewer and viewer["is_admin"]))]
-    return {"tag": tag.strip(), "count": len(rows), "books": [_book_json(r) for r in rows]}
+    private_sql = "" if (viewer and viewer["is_admin"]) else " AND NOT IFNULL(is_private,0)"
+    total = database.query_one(
+        "SELECT COUNT(*) AS c FROM books WHERE tags LIKE ?" + private_sql, (like,))["c"]
+    limit = max(1, min(limit, 1000))
+    offset = max(0, offset)
+    rows = database.query_all(
+        "SELECT * FROM books WHERE tags LIKE ?" + private_sql +
+        " ORDER BY title LIMIT ? OFFSET ?", (like, limit, offset))
+    return {"tag": tag.strip(), "count": len(rows), "total": total,
+            "books": [_book_json(r) for r in rows]}
 
 
 @app.post("/api/notes/export/save")

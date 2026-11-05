@@ -36,6 +36,12 @@ _rescan: bool = False          # 扫描进行中又收到触发（如连续上�
 # 上传时已算出的 hash（rel_path -> sha256），扫描入库 'new' 时直接取用，避免重算大文件
 _pending_hashes: dict = {}
 
+# 豆瓣补抓节流（大书库防限流/封 IP）：最小请求间隔 + 连续失败熔断
+_DOUBAN_MIN_INTERVAL = 1.5      # 秒
+_douban_last = 0.0              # 上次请求的 monotonic 时刻
+_douban_fails = 0               # 连续请求失败计数
+_douban_pause_until = 0.0       # 熔断截止时刻（monotonic）
+
 
 async def start() -> None:
     """创建元数据后台 worker（须在事件循环内调用）。"""
@@ -81,12 +87,33 @@ async def _worker_loop() -> None:
 
 
 async def _enrich_douban(book_id: int) -> None:
-    """元数据提取成功后，异步补抓豆瓣评分/简介；失败保持现状（优雅降级）。"""
+    """元数据提取成功后，异步补抓豆瓣评分/简介；失败保持现状（优雅降级）。
+
+    大书库防护：请求间隔 ≥1.5s（几千本摊开慢速补抓，不触发豆瓣反爬）；
+    连续 3 次请求失败（限流/断网）熔断 5 分钟，期间跳过补抓留待下次扫描。
+    """
+    global _douban_last, _douban_fails, _douban_pause_until
     try:
+        now = time.monotonic()
+        if now < _douban_pause_until:
+            return                                    # 熔断冷却中
+        wait = _douban_last + _DOUBAN_MIN_INTERVAL - time.monotonic()
+        if wait > 0:
+            await asyncio.sleep(wait)
+        _douban_last = time.monotonic()
+
         row = database.get_book(book_id)
         if row is None or row["meta_status"] != 1 or row["meta_source"]:
             return
-        info = await metadata.fetch_douban(row["title"], row["author"])
+        info, blocked = await metadata.fetch_douban(row["title"], row["author"])
+        if blocked:
+            _douban_fails += 1
+            if _douban_fails >= 3:
+                _douban_pause_until = time.monotonic() + 300   # 连续 3 次失败 → 冷却 5 分钟
+                _douban_fails = 0
+                log.warning("豆瓣连续请求失败，暂停补抓 5 分钟（%s 待下次重试）", row["rel_path"])
+            return                                    # 不标记 meta_source，下次扫描重试
+        _douban_fails = 0
         if info:
             desc = info.get("description") or ""
             database.execute(

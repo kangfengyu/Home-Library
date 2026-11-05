@@ -366,10 +366,14 @@ def process_book(book_id: int) -> bool:
 # ---------------------------------------------------------------- 豆瓣简介（可降级）
 
 
-async def fetch_douban(title: str, author: str) -> Optional[dict]:
-    """请求豆瓣搜索建议接口；被限流/无网络/超时一律返回 None，由调用方降级。"""
+async def fetch_douban(title: str, author: str) -> tuple:
+    """请求豆瓣搜索建议接口。
+
+    返回 (info, blocked)：info 为 dict 或 None（None = 豆瓣无此书，属正常结果）；
+    blocked=True 表示请求本身失败（限流/无网络/超时），调用方应节流退避而非标记已完成。
+    """
     if not title:
-        return None
+        return None, False
     q = f"{title} {author}".strip()
     try:
         import httpx
@@ -381,7 +385,7 @@ async def fetch_douban(title: str, author: str) -> Optional[dict]:
                 "https://www.douban.com/j/search_suggest", params={"q": q}
             )
             if r.status_code != 200:
-                return None
+                return None, True
             data = r.json()
         for c in data.get("cards") or []:
             result = {
@@ -401,7 +405,7 @@ async def fetch_douban(title: str, author: str) -> Optional[dict]:
             if m:
                 result["douban_id"] = m.group(1)
             if result["title"] or result["description"]:
-                return result
-        return None
+                return result, False
+        return None, False
     except Exception:
-        return None
+        return None, True

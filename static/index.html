@@ -173,6 +173,10 @@
   .dlbtn { bottom:8px; left:14px; }
   .delbtn { bottom:8px; right:8px; color:#E8A29B; }
   .delbtn:hover { color:#F0907F; }
+  .loadmore { grid-column:1/-1; text-align:center; padding:13px; margin-top:4px;
+              border:1px dashed var(--line); border-radius:10px; color:var(--sub);
+              cursor:pointer; background:var(--panel); font-size:12.5px; transition:.15s; }
+  .loadmore:hover { color:var(--accent); border-color:var(--accent); }
 
   /* ---------- 荐书 ---------- */
   .reco-card { display:flex; align-items:center; gap:12px; background:var(--panel);
@@ -1135,6 +1139,7 @@ const STR_I = {
     delBook: '删除这本书',
     delBookAsk: b => `确定删除《${b}》吗？\n\n书籍原文件、阅读进度、笔记及全部关联数据都会一起删除，不可恢复！`,
     bookDeleted: '已删除', delBookFail: '删除失败：',
+    loadMore: (s, n) => `加载更多 · 已显示 ${s} / ${n} 本`,
     switchedNight: '已切换夜读 · 乌木', switchedDay: '已切换日读 · 宣纸',
     tab_recent: '最近阅读', tab_library: '书架', tab_notes: '笔记',
     tab_questions: '问题', tab_settings: '设置',
@@ -1297,6 +1302,7 @@ const STR_I = {
     delBook: 'Delete this book',
     delBookAsk: b => `Delete "${b}"?\n\nThe file, reading progress, notes and all related data will be permanently removed!`,
     bookDeleted: 'Deleted', delBookFail: 'Delete failed: ',
+    loadMore: (s, n) => `Load more · ${s} of ${n} shown`,
     switchedNight: 'Night mode · ebony', switchedDay: 'Day mode · paper',
     tab_recent: 'Recently read', tab_library: 'Shelf', tab_notes: 'Notes',
     tab_questions: 'Questions', tab_settings: 'Settings',
@@ -2270,6 +2276,40 @@ function bookCard(b, allowLock) {
   }
   return el;
 }
+/* 大列表分页：目录/标签视图统一「加载更多」卡（后端 200/批，几千本不卡） */
+function appendMoreCard(grid, shown, total, onMore) {
+  if (shown >= total) return;
+  const d = document.createElement('div');
+  d.className = 'loadmore';
+  d.textContent = t('loadMore')(shown, total);
+  d.onclick = onMore;
+  grid.appendChild(d);
+}
+async function loadMoreExplore() {
+  const st = window._exploreMore;
+  if (!st) return;
+  try {
+    const data = await api('/api/explore?path=' + encodeURIComponent(st.path) + '&offset=' + st.offset);
+    st.offset += data.books.length;
+    const old = $('#grid .loadmore'); if (old) old.remove();
+    const grid = $('#grid');
+    data.books.forEach(b => grid.appendChild(bookCard(b, true)));
+    appendMoreCard(grid, st.offset, data.total, loadMoreExplore);
+  } catch (e) { toast('加载失败：' + e.message); }
+}
+async function loadMoreTag() {
+  const st = window._tagMore;
+  if (!st) return;
+  try {
+    const data = await api('/api/books?tag=' + encodeURIComponent(st.tag) + '&offset=' + st.offset);
+    st.offset += data.books.length;
+    const old = $('#grid .loadmore'); if (old) old.remove();
+    const grid = $('#grid');
+    data.books.forEach(b => grid.appendChild(bookCard(b, true)));
+    appendMoreCard(grid, st.offset, data.total, loadMoreTag);
+  } catch (e) { toast('加载失败：' + e.message); }
+}
+
 async function load(path, push = true) {
   window._tagFilter = null;   // 目录浏览与标签集合视图互斥
   try {
@@ -2277,6 +2317,7 @@ async function load(path, push = true) {
     if (!r.ok) { const e = await r.json().catch(() => ({})); toast(e.detail || '加载失败'); return; }
     const data = await r.json();
     curPath = data.path;
+    window._exploreMore = { path: curPath, offset: data.books.length };
     renderCrumb(curPath);
     renderTagBar();
     const grid = $('#grid');
@@ -2285,6 +2326,7 @@ async function load(path, push = true) {
     data.books.forEach(b => grid.appendChild(bookCard(b, true)));
     if (!data.folders.length && !data.books.length)
       grid.innerHTML = '<div class="empty" style="grid-column:1/-1">' + t('folderEmpty') + '</div>';
+    appendMoreCard(grid, data.books.length, data.total, loadMoreExplore);
     if (push) history.pushState({ view: 'library', path: curPath }, '', '/?view=library&path=' + encodeURIComponent(curPath));
   } catch (e) { toast('网络错误：' + e.message); }
 }
@@ -2312,11 +2354,13 @@ async function renderTagBar() {
 async function showTagBooks(tag) {
   try {
     const data = await api('/api/books?tag=' + encodeURIComponent(tag));
-    $('#crumb').innerHTML = `<span class="cur">${t('tagView')(tagName(tag), data.count)}</span>`;
+    $('#crumb').innerHTML = `<span class="cur">${t('tagView')(tagName(tag), data.total)}</span>`;
+    window._tagMore = { tag, offset: data.books.length };
     const grid = $('#grid');
     grid.innerHTML = '';
     data.books.forEach(b => grid.appendChild(bookCard(b, true)));
     if (!data.books.length) grid.innerHTML = '<div class="empty" style="grid-column:1/-1">' + t('tagEmpty') + '</div>';
+    appendMoreCard(grid, data.books.length, data.total, loadMoreTag);
     renderTagBar();   // 刷新筛选条高亮
   } catch (e) { if (e.message !== 'unauthorized') toast('加载失败：' + e.message); }
 }
