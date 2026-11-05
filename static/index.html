@@ -395,6 +395,21 @@
   .rv-front { font-size:15px; line-height:1.8; min-height:64px; padding:6px 2px; }
   .rv-back { font-size:12.5px; color:var(--sub); border-top:1px dashed var(--line);
              margin-top:8px; padding-top:8px; line-height:1.7; }
+  /* 书桌 · 概念库 */
+  .concept-chips { display:flex; flex-wrap:wrap; gap:8px; margin:8px 0 10px; }
+  .chip { background:var(--panel2); border:1px solid var(--line); border-radius:999px;
+          padding:4px 12px; font-size:12.5px; cursor:pointer; color:var(--txt); }
+  .chip:hover { border-color:#C28E5C; }
+  .concept-group { border:1px solid var(--line); border-radius:8px; margin-bottom:8px;
+                   overflow:hidden; }
+  .concept-group .cg-head { padding:8px 12px; background:var(--panel2);
+                            display:flex; gap:8px; align-items:baseline; }
+  .concept-group .cg-item { padding:8px 12px; border-top:1px solid var(--line);
+                            display:flex; gap:8px; align-items:center; }
+  .cg-main { flex:1; min-width:0; }
+  .cg-book { font-size:12.5px; font-weight:600; display:block; }
+  .cg-why { font-size:11.5px; color:var(--sub); }
+  .cg-btns { display:flex; gap:6px; flex:0 0 auto; }
   .fy-sessions { display:flex; flex-direction:column; gap:6px; max-height:430px; overflow-y:auto; }
   .fy-session { background:var(--panel); border:1px solid var(--line); border-radius:8px;
                 padding:9px 12px; cursor:pointer; font-size:12.5px; }
@@ -647,6 +662,11 @@
         <h3 class="sect-title" data-i18n="shelfTitle">最近阅读 · 书案陈编</h3>
         <div class="recent-grid" id="recentGrid"></div>
         <div id="recentEmpty" class="empty hide"></div>
+      </div>
+      <div class="desk-sec hide" id="deskConceptSec">
+        <h3 class="sect-title" data-i18n="conceptTitle">概念库</h3>
+        <div class="concept-chips" id="conceptChips"></div>
+        <button class="btn mini" id="conceptAll" data-i18n="conceptAll">查看全部</button>
       </div>
       <div class="stat-cards">
         <div class="stat"><div class="v" id="myToday">—</div><div class="l" data-i18n="statToday">今日阅读时长</div></div>
@@ -936,6 +956,19 @@
   </div>
 </div>
 
+<!-- 概念库弹层 -->
+<div id="conceptModal" class="overlay hide">
+  <div class="modal" style="max-width:560px;">
+    <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
+      <h3 data-i18n="conceptTitle" style="margin:0;">概念库</h3>
+      <span style="flex:1"></span>
+      <input id="conceptQ" type="search" style="max-width:180px;"
+             data-i18n-ph="conceptPh" placeholder="搜索概念…">
+    </div>
+    <div id="conceptList" style="max-height:56vh; overflow-y:auto;"></div>
+  </div>
+</div>
+
 <!-- 全局云朵浮层：未解决的问题（可拖拽，永远置顶） -->
 <div id="qCloud" class="hide" title="">
   <svg class="cloud-svg" viewBox="0 0 96 68" aria-hidden="true">
@@ -1058,6 +1091,9 @@ const STR_I = {
     reviewShow: '显示答案', rForgot: '忘了', rFuzzy: '模糊', rGotIt: '记得',
     reviewDone: n => `复习完成：今天 ${n} 张`,
     reviewAdded: n => `已加入 ${n} 条复习`,
+    conceptTitle: '概念库', conceptAll: '查看全部',
+    conceptInBooks: n => `出现在 ${n} 本书`,
+    conceptToReview: '加入复习', conceptPh: '搜索概念…',
     searchPh: '搜索书名 / 作者…', rescan: '↻ 重新扫描',
     ready: '就绪', scanning: n => `扫描中… 待处理 ${n}`, booksN: n => `藏书 ${n} 种`,
     shelfTitle: '最近阅读 · 书案陈编',
@@ -1199,6 +1235,9 @@ const STR_I = {
     reviewShow: 'Show answer', rForgot: 'Forgot', rFuzzy: 'Fuzzy', rGotIt: 'Got it',
     reviewDone: n => `Review done: ${n} card(s) today`,
     reviewAdded: n => `${n} item(s) added to review`,
+    conceptTitle: 'Concepts', conceptAll: 'View all',
+    conceptInBooks: n => `in ${n} book(s)`,
+    conceptToReview: 'To review', conceptPh: 'Search concepts…',
     searchPh: 'Search title / author…', rescan: '↻ Rescan',
     ready: 'Ready', scanning: n => `Scanning… ${n} pending`, booksN: n => `${n} books`,
     shelfTitle: 'Recently read · on the desk',
@@ -1406,7 +1445,86 @@ async function loadDesk() {
   loadRecent();
   loadReviewSummary();
   loadMe();
+  loadConcepts();
 }
+
+/* ---- 概念库 ---- */
+let conceptGroups = [];
+async function loadConcepts() {
+  const sec = $('#deskConceptSec'), chips = $('#conceptChips');
+  if (!me) { sec.classList.add('hide'); return; }
+  try {
+    const d = await api('/api/concepts?grouped=1');
+    conceptGroups = d.concepts;
+    if (!conceptGroups.length) { sec.classList.add('hide'); return; }
+    sec.classList.remove('hide');
+    chips.innerHTML = '';
+    conceptGroups.slice(0, 8).forEach(g => {
+      const s = document.createElement('span');
+      s.className = 'chip';
+      s.textContent = g.items.length > 1
+        ? `${g.name} · ${t('conceptInBooks')(g.items.length)}` : g.name;
+      s.onclick = () => { openConceptModal(g.name); };
+      chips.appendChild(s);
+    });
+  } catch (e) { if (e.message !== 'unauthorized') sec.classList.add('hide'); }
+}
+$('#conceptAll').onclick = () => openConceptModal('');
+function openConceptModal(q) {
+  $('#conceptQ').value = q || '';
+  renderConceptList();
+  $('#conceptModal').classList.remove('hide');
+}
+$('#conceptQ').oninput = renderConceptList;
+function renderConceptList() {
+  const q = $('#conceptQ').value.trim().toLowerCase();
+  const box = $('#conceptList');
+  box.innerHTML = '';
+  const groups = conceptGroups.filter(g =>
+    !q || g.name.toLowerCase().includes(q) ||
+    g.items.some(it => (it.book_title || '').toLowerCase().includes(q)));
+  if (!groups.length) {
+    box.innerHTML = '<div class="drawer-empty">' + t('pickNone') + '</div>';
+    return;
+  }
+  groups.forEach(g => {
+    const div = document.createElement('div');
+    div.className = 'concept-group';
+    const head = document.createElement('div');
+    head.className = 'cg-head';
+    head.innerHTML = `<b class="serif">${esc(g.name)}</b>
+      ${g.items.length > 1 ? `<span class="subtle-h">${t('conceptInBooks')(g.items.length)}</span>` : ''}`;
+    div.appendChild(head);
+    g.items.forEach(it => {
+      const row = document.createElement('div');
+      row.className = 'cg-item';
+      row.innerHTML =
+        `<div class="cg-main"><span class="cg-book">${it.book_title ? '《' + esc(it.book_title) + '》' : ''}</span>
+           <span class="cg-why">${esc(it.why || '')}</span></div>
+         <div class="cg-btns">
+           <button class="btn mini" data-act="rv">${t('conceptToReview')}</button>
+           <button class="btn mini" data-act="del">✕</button></div>`;
+      row.querySelector('[data-act=rv]').onclick = async () => {
+        try {
+          await api(`/api/concepts/${it.id}/to_review`, { method: 'POST' });
+          toast(t('reviewAdded')(1)); loadReviewSummary();
+        } catch (e) { toast(e.message); }
+      };
+      row.querySelector('[data-act=del]').onclick = async () => {
+        try {
+          await api(`/api/concepts/${it.id}`, { method: 'DELETE' });
+          loadConcepts(); renderConceptList();
+        } catch (e) { toast(e.message); }
+      };
+      div.appendChild(row);
+    });
+    box.appendChild(div);
+  });
+}
+$('#conceptModal').onclick = e => { if (e.target.id === 'conceptModal') $('#conceptModal').classList.add('hide'); };
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') $('#conceptModal').classList.add('hide');
+});
 async function loadReviewSummary() {
   const box = $('#reviewDueTxt'), btn = $('#reviewStart');
   if (!me) {

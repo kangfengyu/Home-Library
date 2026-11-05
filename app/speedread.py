@@ -484,6 +484,12 @@ async def run_job(jid: int) -> None:
                                   fallback=0,
                                   chunk_done=len(ok),
                                   chunk_failed=len(rows) - len(ok))
+        try:                                        # 概念库沉淀（失败不影响速读结果）
+            database.upsert_concepts(job["user_id"], job["book_id"], jid,
+                                     result.get("concepts") or [],
+                                     thesis=result.get("thesis") or "")
+        except Exception:
+            log.exception("速读 job %s 概念入库失败（忽略）", jid)
         log.info("速读 job %s 完成：%d/%d 块成功", jid, len(ok), total)
     except Exception as e:                       # noqa: BLE001
         log.exception("速读 job %s 失败", jid)
@@ -509,6 +515,12 @@ async def run_fallback(jid: int) -> None:
     result = data if data is not None else {"raw": raw[:12000]}
     database.update_speed_job(jid, status="done", fallback=1,
                               result=json.dumps(result, ensure_ascii=False))
+    try:                                            # 先验降级报告的概念同样入库
+        database.upsert_concepts(job["user_id"], job["book_id"], jid,
+                                 result.get("concepts") or [],
+                                 thesis=result.get("thesis") or "")
+    except Exception:
+        log.exception("速读 job %s 概念入库失败（忽略）", jid)
 
 
 def chunk_text(ch) -> str:

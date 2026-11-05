@@ -779,6 +779,48 @@ def api_review_delete(request: Request, rid: int):
     if not database.delete_review_item(user["id"], rid):
         raise HTTPException(status_code=404, detail="复习卡不存在")
     return {"ok": True}
+
+
+# ---------------------------------------------------------------- 概念库
+
+
+@app.get("/api/concepts")
+def api_concepts(request: Request, book_id: int = 0, grouped: int = 0):
+    user = _require_user(request)
+    rows = database.list_concepts(user["id"], book_id or None)
+    if not grouped:
+        return {"concepts": [dict(r) for r in rows]}
+    groups: dict = {}
+    for r in rows:
+        groups.setdefault(r["name"].strip().casefold(), []).append(r)
+    out = [{"name": g[0]["name"], "items": [dict(x) for x in g]} for g in groups.values()]
+    out.sort(key=lambda g: -len(g["items"]))
+    return {"concepts": out}
+
+
+@app.post("/api/concepts/{cid}/to_review")
+def api_concept_to_review(request: Request, cid: int):
+    user = _require_user(request)
+    rid = database.concept_to_review(user["id"], cid)
+    if rid is None:
+        raise HTTPException(status_code=404, detail="概念不存在")
+    return {"id": rid}
+
+
+@app.delete("/api/concepts/{cid}")
+def api_concept_delete(request: Request, cid: int):
+    user = _require_user(request)
+    if not database.delete_concept(user["id"], cid):
+        raise HTTPException(status_code=404, detail="概念不存在")
+    return {"ok": True}
+
+
+@app.get("/api/books/{book_id}/outline")
+def api_book_outline(request: Request, book_id: int):
+    _require_user(request)
+    if database.get_book(book_id) is None:
+        raise HTTPException(status_code=404, detail="书籍不存在")
+    return database.book_outline(book_id)
     return {"ok": True}
 
 

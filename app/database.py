@@ -621,6 +621,90 @@ def delete_review_item(user_id: int, rid: int) -> bool:
     return True
 
 
+# ---------------------------------------------------------------- 概念库
+
+
+def upsert_concepts(user_id: int, book_id: int, job_id: int,
+                    concepts: list, thesis: str = "") -> int:
+    """速读报告 done 时把 concepts[{name,why}] 入库（UNIQUE 幂等，rerun 不重复）。"""
+    now = time.time()
+    added = 0
+    with _lock:
+        for c in concepts:
+            if not isinstance(c, dict):
+                continue
+            name = (c.get("name") or "").strip()
+            if not name:
+                continue
+            cur = _check().execute(
+                "INSERT OR IGNORE INTO concepts(user_id, book_id, name, why, thesis, "
+                "job_id, created_at) VALUES(?,?,?,?,?,?,?)",
+                (user_id, book_id, name[:80], (c.get("why") or "").strip()[:200],
+                 (thesis or "")[:200], job_id, now))
+            added += cur.rowcount
+        _conn.commit()
+    return added
+
+
+def list_concepts(user_id: int, book_id: Optional[int] = None) -> list:
+    sql = ("SELECT c.*, b.title AS book_title FROM concepts c "
+           "LEFT JOIN books b ON b.id = c.book_id WHERE c.user_id=?")
+    args: tuple = (user_id,)
+    if book_id:
+        sql += " AND c.book_id=?"
+        args = (user_id, book_id)
+    sql += " ORDER BY c.name, c.created_at DESC"
+    return query_all(sql, args)
+
+
+def concept_to_review(user_id: int, cid: int) -> Optional[int]:
+    row = query_one("SELECT c.*, b.title AS book_title FROM concepts c "
+                    "LEFT JOIN books b ON b.id = c.book_id "
+                    "WHERE c.id=? AND c.user_id=?", (cid, user_id))
+    if row is None:
+        return None
+    back = (row["why"] or "")
+    if row["book_title"]:
+        back = f"{back}（{row['thesis']}）" if row["thesis"] else back
+        back = f"《{row['book_title']}》：{back}"
+    return add_review_item(user_id, row["name"], back, row["book_id"] or 0, kind="concept")
+
+
+def delete_concept(user_id: int, cid: int) -> bool:
+    row = query_one("SELECT id FROM concepts WHERE id=? AND user_id=?", (cid, user_id))
+    if row is None:
+        return False
+    execute("DELETE FROM concepts WHERE id=?", (cid,))
+    return True
+
+
+def book_outline(book_id: int) -> dict:
+    """章节大纲：优先取该书最近一次 done 的速读 job（chunks label + result.load_bearing）。"""
+    job = query_one("SELECT id, result FROM speed_jobs WHERE book_id=? AND status='done' "
+                    "ORDER BY updated_at DESC LIMIT 1", (book_id,))
+    if job is None:
+        return {"chapters": [], "load_bearing": []}
+    chapters = []
+    for r in query_all("SELECT label, summary FROM speed_chunks WHERE job_id=? "
+                       "AND status='ok' ORDER BY idx", (job["id"],)):
+        if not r["label"]:
+            continue
+        thesis = ""
+        try:
+            data = json.loads(r["summary"])
+            thesis = (data.get("thesis") or "")[:120]
+        except Exception:
+            pass
+        chapters.append({"label": r["label"], "thesis": thesis})
+    load_bearing: list = []
+    try:
+        data = json.loads(job["result"]) if job["result"] else {}
+        load_bearing = [str(x) for x in (data.get("load_bearing") or [])][:6]
+    except Exception:
+        pass
+    return {"chapters": chapters, "load_bearing": load_bearing}
+
+
 # ---------------------------------------------------------------- AI 速读（Map-Reduce 流水线）
 
 
