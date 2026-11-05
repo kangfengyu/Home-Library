@@ -404,8 +404,15 @@
   /* 概念胶囊/时间线重点章节徽标复用 .chip 时必须去掉书封角标的绝对定位 */
   .ls-book .chip, .ls-focus .chip {
     position:static; top:auto; right:auto; z-index:auto; font-family:inherit; }
-  .tutor-list, .concept-list { display:flex; flex-direction:column; gap:8px;
-                               max-height:352px; overflow-y:auto; }
+  .tutor-list, .concept-list { display:flex; flex-direction:column; gap:8px; }
+  /* 翻页器：‹ [页码] / 总页数 ›（书桌 AI老师/概念库共用） */
+  .pager { display:flex; align-items:center; gap:8px; margin-top:10px; }
+  .pager .btn { padding:3px 10px; font-size:13px; line-height:1.5; }
+  .pager .btn:disabled { opacity:.35; cursor:default; }
+  .pager .pg-num { width:46px; text-align:center; padding:3px 6px; font-size:12.5px;
+                   border:1px solid var(--line); border-radius:6px; background:var(--panel);
+                   color:var(--txt); }
+  .pager .pg-total { font-size:12px; color:var(--sub); white-space:nowrap; }
   .concept-q { max-width:200px; margin:8px 0 10px; }
   .desk-tip { font-size:12px; color:var(--sub); line-height:1.7; width:100%; }
   .chip { background:var(--panel2); border:1px solid var(--line); border-radius:999px;
@@ -719,12 +726,14 @@
       <div class="desk-sec hide" id="deskTutorSec">
         <h3 class="sect-title" data-i18n="tutorTitle">AI老师</h3>
         <div id="deskTutor" class="tutor-list"></div>
+        <div class="pager" id="tutorPager"></div>
       </div>
       <div class="desk-sec hide" id="deskConceptSec">
         <h3 class="sect-title" data-i18n="conceptTitle">概念库</h3>
         <input id="conceptQ" type="search" class="pick-q concept-q" data-i18n-ph="conceptPh"
                placeholder="搜索概念…">
         <div id="conceptList" class="concept-list"></div>
+        <div class="pager" id="conceptPager"></div>
       </div>
 
       <div class="desk-sec" id="deskRecentSec">
@@ -1189,6 +1198,7 @@ const STR_I = {
     conceptTitle: '概念库',
     conceptInBooks: n => `出现在 ${n} 本书`,
     conceptToReview: '加入复习', conceptPh: '搜索概念…',
+    pagerPrev: '上一页', pagerNext: '下一页', pagerGo: '输入页码回车跳转',
     conceptGuide: '速读完一本书后，书里的核心概念会自动沉淀到这里。',
     tab_learn: 'AI荐学', view_learn: 'AI荐学', learnHistory: '我的课程',
     myCourses: '我的课程', courseStep: (a, b) => `第 ${a}/${b} 步`,
@@ -1348,6 +1358,7 @@ const STR_I = {
     conceptTitle: 'Concepts',
     conceptInBooks: n => `in ${n} book(s)`,
     conceptToReview: 'To review', conceptPh: 'Search concepts…',
+    pagerPrev: 'Previous page', pagerNext: 'Next page', pagerGo: 'Type a page number and press Enter',
     conceptGuide: 'After a speed-read finishes, the core concepts of the book settle here automatically.',
     tab_learn: 'AI Learn', view_learn: 'AI Learn', learnHistory: 'My courses',
     myCourses: 'My courses', courseStep: (a, b) => `Step ${a}/${b}`,
@@ -1578,19 +1589,44 @@ async function loadDesk() {
   loadDeskTutor();
 }
 
-/* ---- AI老师（书桌问答卡） ---- */
+/* ---- AI老师（书桌问答卡，按钮翻页）+ 共用翻页器 ---- */
+const PAGE_SIZE = 3;
+let tutorPage = 1, conceptPage = 1;
+function renderPager(el, page, pages, go) {
+  el.innerHTML = '';
+  if (pages <= 1) return;
+  const mk = (txt, dis, fn, tip) => {
+    const b = document.createElement('button');
+    b.className = 'btn'; b.textContent = txt; b.disabled = dis;
+    b.title = t(tip); b.onclick = fn;
+    return b;
+  };
+  el.appendChild(mk('‹', page <= 1, () => go(page - 1), 'pagerPrev'));
+  const num = document.createElement('input');
+  num.type = 'number'; num.min = 1; num.max = pages; num.value = page;
+  num.className = 'pg-num'; num.title = t('pagerGo');
+  num.onchange = () => go(Math.min(Math.max(1, parseInt(num.value) || 1), pages));
+  el.appendChild(num);
+  const tot = document.createElement('span');
+  tot.className = 'pg-total'; tot.textContent = '/ ' + pages;
+  el.appendChild(tot);
+  el.appendChild(mk('›', page >= pages, () => go(page + 1), 'pagerNext'));
+}
 async function loadDeskTutor() {
   const sec = $('#deskTutorSec'), box = $('#deskTutor');
   if (!me) { sec.classList.add('hide'); return; }
   sec.classList.remove('hide');
   try {
-    const d = await api('/api/tutor/list?limit=10');
+    const d = await api('/api/tutor/list?limit=50');
     if (!d.items.length) {
       box.innerHTML = '<div class="desk-tip">' + t('tutorGuide') + '</div>';
+      renderPager($('#tutorPager'), 1, 1, () => {});
       return;
     }
+    const pages = Math.ceil(d.items.length / PAGE_SIZE);
+    tutorPage = Math.min(Math.max(1, tutorPage), pages);
     box.innerHTML = '';
-    d.items.forEach(it => {
+    d.items.slice((tutorPage - 1) * PAGE_SIZE, tutorPage * PAGE_SIZE).forEach(it => {
       const div = document.createElement('div');
       div.className = 'tutor-card';
       div.innerHTML =
@@ -1600,10 +1636,17 @@ async function loadDeskTutor() {
            ${it.question ? `<div class="tc-q">${esc(it.question)}</div>` : ''}
            <div class="tc-a">${esc(it.answer || '')}</div>
            <div class="tc-btns">
+             <button class="btn mini" data-act="rv">${t('conceptToReview')}</button>
              <button class="btn mini" data-act="jump">${t('tutorJump')}</button>
              <button class="btn mini" data-act="del">✕</button>
            </div>
          </div>`;
+      div.querySelector('[data-act=rv]').onclick = async () => {
+        try {
+          await api(`/api/tutor/${it.id}/to_review`, { method: 'POST' });
+          toast(t('reviewAdded')(1)); loadReviewSummary();
+        } catch (e) { toast(e.message); }
+      };
       div.querySelector('[data-act=jump]').onclick = () =>
         location.href = '/reader?id=' + it.book_id + '&note=' + encodeURIComponent(it.anchor || '');
       div.querySelector('.tc-a').onclick = () => div.classList.toggle('open');
@@ -1615,6 +1658,7 @@ async function loadDeskTutor() {
       };
       box.appendChild(div);
     });
+    renderPager($('#tutorPager'), tutorPage, pages, p => { tutorPage = p; loadDeskTutor(); });
   } catch (e) { if (e.message !== 'unauthorized') sec.classList.add('hide'); }
 }
 
@@ -1870,13 +1914,14 @@ async function loadConcepts() {
     renderConceptList();
   } catch (e) { if (e.message !== 'unauthorized') sec.classList.add('hide'); }
 }
-$('#conceptQ').oninput = renderConceptList;
+$('#conceptQ').oninput = () => { conceptPage = 1; renderConceptList(); };
 function renderConceptList() {
   const q = $('#conceptQ').value.trim().toLowerCase();
   const box = $('#conceptList');
   box.innerHTML = '';
   if (!conceptGroups.length) {
     box.innerHTML = '<div class="desk-tip">' + t('conceptGuide') + '</div>';
+    renderPager($('#conceptPager'), 1, 1, () => {});
     return;
   }
   const groups = conceptGroups.filter(g =>
@@ -1884,9 +1929,13 @@ function renderConceptList() {
     g.items.some(it => (it.book_title || '').toLowerCase().includes(q)));
   if (!groups.length) {
     box.innerHTML = '<div class="drawer-empty">' + t('pickNone') + '</div>';
+    renderPager($('#conceptPager'), 1, 1, () => {});
     return;
   }
-  groups.forEach(g => {
+  const pages = Math.ceil(groups.length / PAGE_SIZE);
+  conceptPage = Math.min(Math.max(1, conceptPage), pages);
+  const shown = groups.slice((conceptPage - 1) * PAGE_SIZE, conceptPage * PAGE_SIZE);
+  shown.forEach(g => {
     const div = document.createElement('div');
     div.className = 'concept-group';
     const head = document.createElement('div');
@@ -1919,6 +1968,7 @@ function renderConceptList() {
     });
     box.appendChild(div);
   });
+  renderPager($('#conceptPager'), conceptPage, pages, p => { conceptPage = p; renderConceptList(); });
 }
 async function loadReviewSummary() {
   const box = $('#reviewDueTxt'), btn = $('#reviewStart');

@@ -847,6 +847,20 @@ def list_tutor_qa(user_id: int, limit: int = 30,
         f"WHERE q.user_id=?{priv} ORDER BY q.created_at DESC LIMIT ?", (user_id, limit))
 
 
+def tutor_qa_to_review(user_id: int, qid: int) -> Optional[int]:
+    """把 AI老师问答转成复习条目：front=问题，back=回答（带书名出处）。"""
+    row = query_one("SELECT q.*, b.title AS book_title FROM tutor_qa q "
+                    "LEFT JOIN books b ON b.id = q.book_id "
+                    "WHERE q.id=? AND q.user_id=?", (qid, user_id))
+    if row is None:
+        return None
+    front = (row["question"] or row["quote"] or "").strip() or "AI老师问答"
+    back = row["answer"] or ""
+    if row["book_title"]:
+        back = f"《{row['book_title']}》：{back}"
+    return add_review_item(user_id, front, back, row["book_id"] or 0, kind="tutor")
+
+
 def delete_tutor_qa(user_id: int, qid: int) -> bool:
     row = query_one("SELECT id FROM tutor_qa WHERE id=? AND user_id=?", (qid, user_id))
     if row is None:

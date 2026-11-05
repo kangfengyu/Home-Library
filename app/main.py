@@ -1053,6 +1053,15 @@ def api_tutor_list(request: Request, limit: int = 30):
                                              include_private=bool(user["is_admin"]))]}
 
 
+@app.post("/api/tutor/{qid}/to_review")
+def api_tutor_to_review(request: Request, qid: int):
+    user = _require_user(request)
+    rid = database.tutor_qa_to_review(user["id"], qid)
+    if rid is None:
+        raise HTTPException(status_code=404, detail="问答不存在")
+    return {"id": rid}
+
+
 @app.delete("/api/tutor/{qid}")
 def api_tutor_delete(request: Request, qid: int):
     user = _require_user(request)
