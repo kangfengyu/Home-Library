@@ -276,6 +276,7 @@ const STR = {
     epubFail:'EPUB 渲染库（epub.js + JSZip）加载失败，请检查网络后刷新重试',
     parseFail:'EPUB 解析失败：', pdfLoad:'PDF 加载失败：', netErr:'网络错误：',
     noBook:'书籍不存在', comicNone:'压缩包内没有找到图片',
+  mobiNoRead:'此书为 MOBI / AZW3 格式（Amazon 私有格式），暂不支持在线阅读——书库已收录，可下载；用 Calibre 转成 EPUB 替换后即可阅读、划线与 AI 精读。',
     firstPage:'已经是第一页了', lastPage:'已经是最后一页了',
     zoom:b=>'缩放 '+Math.round(b*100)+'%',
     selCancel:'取消', selOnly:'✂ 仅划线', selPlus:'💬 划线并记想法', selSave:'💾 保存划线+想法',
@@ -302,6 +303,7 @@ const STR = {
     epubFail:'EPUB engine (epub.js + JSZip) failed to load — check your network and refresh',
     parseFail:'Failed to parse EPUB: ', pdfLoad:'Failed to load PDF: ', netErr:'Network error: ',
     noBook:'Book not found', comicNone:'No images found in the archive',
+  mobiNoRead:'This book is in MOBI / AZW3 (Amazon proprietary) format and cannot be read online. It is catalogued and downloadable — convert it to EPUB with Calibre and replace the file to read, highlight and AI-digest it.',
     firstPage:'Already at the first page', lastPage:'Already at the last page',
     zoom:b=>'Zoom '+Math.round(b*100)+'%',
     selCancel:'Cancel', selOnly:'✂ Highlight', selPlus:'💬 Highlight & add thought', selSave:'💾 Save',
@@ -738,6 +740,7 @@ $('#dlBtn').onclick = async () => {
   if (book.format === 'epub') initEpub();
   else if (book.format === 'pdf') initPdf();
   else if (book.format === 'cbz' || book.format === 'cbr') initComic();
+  else if (book.format === 'mobi' || book.format === 'azw3') fail(t('mobiNoRead'));
   else fail('暂不支持该格式');
 })();
 

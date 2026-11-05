@@ -287,7 +287,9 @@ def api_delete_book(request: Request, book_id: int):
     return {"ok": True, "file_deleted": file_deleted}
 
 
-_ALLOWED_BOOK_EXT = {".epub", ".pdf", ".cbz", ".cbr"}
+_ALLOWED_BOOK_EXT = config.BOOK_EXTS          # 上传与扫描同一份格式白名单（mobi/azw3 仅收录不可读）
+# 选书器（费曼/AI速读）只列可在线阅读的书：mobi/azw3 无法提取正文，选了也无法考核/精读
+_READABLE_SQL = "(" + ",".join(f"'{f}'" for f in sorted(config.READABLE_FORMATS)) + ")"
 
 
 def _safe_upload_name(name: str) -> str:
@@ -304,7 +306,7 @@ async def api_upload(request: Request, file: UploadFile = File(...)):
     raw = _safe_upload_name(file.filename)
     ext = os.path.splitext(raw)[1].lower()
     if ext not in _ALLOWED_BOOK_EXT:
-        raise HTTPException(status_code=400, detail="仅支持 EPUB / PDF / CBZ / CBR 格式")
+        raise HTTPException(status_code=400, detail="仅支持 EPUB / PDF / CBZ / CBR / MOBI / AZW3（后两者仅收录，不可在线阅读）")
     # 1) 先写隐藏临时文件（.part 扩展名不会被扫描收录），边写边算内容 hash
     tmp = config.LIBRARY_ROOT / f".{raw}.{os.getpid()}.part"
     size = 0
@@ -383,7 +385,8 @@ def api_books_pick(request: Request, q: str = Query("", max_length=80)):
         like = f"%{q}%"
         rows = database.query_all(
             "SELECT id, title, author, format, size, is_private FROM books "
-            "WHERE title LIKE ? OR author LIKE ? OR rel_path LIKE ? "
+            "WHERE format IN " + _READABLE_SQL +
+            " AND (title LIKE ? OR author LIKE ? OR rel_path LIKE ?) "
             "ORDER BY title LIMIT 30", (like, like, like))
         rows = [r for r in rows
                 if not (r["is_private"] and not (user and user["is_admin"]))]
@@ -396,7 +399,8 @@ def api_books_pick(request: Request, q: str = Query("", max_length=80)):
         "ORDER BY p.updated_at DESC LIMIT 8", (user["id"],))
     latest = database.query_all(
         "SELECT id, title, author, format, size, is_private FROM books "
-        "ORDER BY created_at DESC, id DESC LIMIT 12")
+        "WHERE format IN " + _READABLE_SQL +
+        " ORDER BY created_at DESC, id DESC LIMIT 12")
     latest = [r for r in latest if not (r["is_private"] and not user["is_admin"])]
     # 最近入库里去掉与最近阅读重复的（默认列表不重复出现）
     seen_ids = {r["id"] for r in recent}
@@ -632,7 +636,8 @@ def api_feynman_books(request: Request):
     """考核选书下拉框：当前用户可见的全部书（最近更新的在前）。"""
     viewer = _current_user(request)
     rows = database.query_all(
-        "SELECT id, title, author, is_private FROM books ORDER BY updated_at DESC LIMIT 500")
+        "SELECT id, title, author, is_private FROM books WHERE format IN " + _READABLE_SQL +
+        " ORDER BY updated_at DESC LIMIT 500")
     rows = [r for r in rows if not (r["is_private"] and not (viewer and viewer["is_admin"]))]
     return {"count": len(rows),
             "books": [{"id": r["id"], "title": r["title"] or "", "author": r["author"] or ""}

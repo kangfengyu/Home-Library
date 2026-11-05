@@ -15,8 +15,12 @@ DB_PATH = DATA_DIR / "library.db"
 HOST = os.environ.get("HOST", "0.0.0.0")
 PORT = int(os.environ.get("PORT", "5000"))
 
-# 支持的书籍格式
-BOOK_EXTS = {".epub", ".pdf", ".cbz", ".cbr"}
+# 支持的书籍格式（扫描收录 + 上传）
+BOOK_EXTS = {".epub", ".pdf", ".cbz", ".cbr", ".mobi", ".azw3"}
+
+# 在线阅读器可读格式（epub.js / PDF.js / zip 解压）；
+# mobi/azw3 为 Amazon 私有格式，仅收录（书架展示 / 下载 / 统计），不支持在线阅读
+READABLE_FORMATS = {"epub", "pdf", "cbz", "cbr"}
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
 
 # 封面缩略图目标宽度（px）
