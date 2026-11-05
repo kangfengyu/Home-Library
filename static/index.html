@@ -755,13 +755,6 @@
       <div id="lnGate" class="empty hide"></div>
       <div class="fy-wrap" id="lnWrap">
         <aside class="fy-side">
-          <div class="fy-new">
-            <label><span data-i18n="lnGoalLabel">学习目标</span>
-              <textarea id="lnGoal" rows="3" data-i18n-ph="learnPh"
-                placeholder="我想学什么、解决什么问题、达到什么程度…"></textarea>
-            </label>
-            <button class="btn primary" id="lnSend" data-i18n="learnSend">生成课程</button>
-          </div>
           <p class="fy-note" data-i18n="lnNote"></p>
           <div class="subtle-h" data-i18n="learnHistory">我的课程</div>
           <div class="fy-sessions" id="lnCourses"></div>
@@ -775,10 +768,10 @@
           </div>
           <div class="fy-chat hide" id="lnChat"></div>
           <div class="fy-empty" id="lnEmpty"></div>
-          <div class="fy-inputbar" id="lnInputbar" style="display:none;">
-            <textarea id="lnRefine" rows="2" data-i18n-ph="learnRefinePh"
-                      placeholder="想调整课程？直接说，比如：第 2 步换更基础的书…"></textarea>
-            <button class="btn primary" id="lnRefineBtn" data-i18n="learnRefineBtn">调整</button>
+          <div class="fy-inputbar" id="lnInputbar">
+            <textarea id="lnInput" rows="2" data-i18n-ph="learnPh"
+                      placeholder="我想学什么、解决什么问题、达到什么程度…"></textarea>
+            <button class="btn primary" id="lnSendBtn" data-i18n="learnSend">生成课程</button>
           </div>
         </div>
       </div>
@@ -1207,7 +1200,6 @@ const STR_I = {
     myCourses: '我的课程', courseStep: (a, b) => `第 ${a}/${b} 步`,
     courseNext: '下一本', courseGo: '继续学习',
     learnPh: '告诉我你想学什么、解决什么问题、达到什么程度…',
-    lnGoalLabel: '学习目标',
     lnNote: '书架没有的书也会推荐；获取后上传同名书籍，课程会自动接上。',
     learnRefinePh: '想怎么调整？比如：更入门一点 / 加一本练习册 / 去掉某本…',
     learnRefineBtn: '调整',
@@ -1368,7 +1360,6 @@ const STR_I = {
     myCourses: 'My courses', courseStep: (a, b) => `Step ${a}/${b}`,
     courseNext: 'Next book', courseGo: 'Continue',
     learnPh: 'Tell me what you want to learn, solve, or achieve…',
-    lnGoalLabel: 'Learning goal',
     lnNote: 'Books not on your shelf may also be recommended — upload a book with the same title and the course links up automatically.',
     learnRefinePh: 'How to adjust? e.g. make it more beginner-friendly / add a workbook / drop a book…',
     learnRefineBtn: 'Adjust',
@@ -1673,6 +1664,20 @@ function renderCourseCard(c, box) {
 
 /* ================= AI荐学（费曼同款壳） ================= */
 let lnCur = null;             // 当前课程
+function lnSyncInput() {      // 底部输入条随状态切换：无课程=生成课程 / 有课程=调整
+  const ta = $('#lnInput'), btn = $('#lnSendBtn');
+  if (lnCur) {
+    ta.setAttribute('data-i18n-ph', 'learnRefinePh');
+    ta.placeholder = t('learnRefinePh');
+    btn.setAttribute('data-i18n', 'learnRefineBtn');
+    if (!btn.disabled) btn.textContent = t('learnRefineBtn');
+  } else {
+    ta.setAttribute('data-i18n-ph', 'learnPh');
+    ta.placeholder = t('learnPh');
+    btn.setAttribute('data-i18n', 'learnSend');
+    if (!btn.disabled) btn.textContent = t('learnSend');
+  }
+}
 async function loadLearn() {
   const gate = $('#lnGate'), wrap = $('#lnWrap');
   if (!me) {
@@ -1684,11 +1689,12 @@ async function loadLearn() {
   if (!lnCur) {
     $('#lnHead').style.display = 'none';
     $('#lnChat').classList.add('hide');
-    $('#lnInputbar').style.display = 'none';
     const e = $('#lnEmpty');
     e.classList.remove('hide');
     e.innerHTML = t('learnIntroNoCourse');
   } else renderLnChat();
+  $('#lnInputbar').style.display = '';
+  lnSyncInput();
 }
 async function renderLnCourses() {
   const box = $('#lnCourses');
@@ -1745,7 +1751,7 @@ function renderLnChat() {
   $('#lnHead').style.display = '';
   $('#lnChat').classList.remove('hide');
   $('#lnEmpty').classList.add('hide');
-  $('#lnInputbar').style.display = '';
+  lnSyncInput();
   const steps = (c.plan?.steps || []);
   $('#lnTitle').textContent = c.title;
   $('#lnSub').textContent = t('courseStep')(Math.min(c.step_now + 1, steps.length), steps.length) +
@@ -1794,38 +1800,28 @@ function renderTimeline(c) {
   });
   return tl;
 }
-$('#lnNew').onclick = () => { lnCur = null; loadLearn(); $('#lnGoal').focus(); };
-$('#lnGoal').onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('#lnSend').onclick(); } };
-$('#lnSend').onclick = async () => {
-  const goal = $('#lnGoal').value.trim();
-  if (!goal) return;
-  const btn = $('#lnSend');
+$('#lnNew').onclick = () => { lnCur = null; loadLearn(); $('#lnInput').focus(); };
+$('#lnInput').onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('#lnSendBtn').onclick(); } };
+$('#lnSendBtn').onclick = async () => {
+  const goal = $('#lnInput').value.trim();
+  if (!goal || $('#lnSendBtn').disabled) return;
+  const btn = $('#lnSendBtn');
   btn.disabled = true; btn.textContent = t('learnRefining');
   try {
-    const d = await api('/api/learn/plan', { method: 'POST', body: JSON.stringify({ goal }) });
-    const d2 = await api('/api/learn/courses');
-    lnCur = d2.courses.find(x => x.id === d.id) || lnCur;
-    $('#lnGoal').value = '';
+    if (lnCur) {          // 调整当前课程
+      await api('/api/learn/plan/' + lnCur.id + '/refine', { method: 'POST',
+        body: JSON.stringify({ goal }) });
+      const d = await api('/api/learn/courses');
+      lnCur = d.courses.find(x => x.id === lnCur.id) || lnCur;
+    } else {              // 生成新课程
+      const d = await api('/api/learn/plan', { method: 'POST', body: JSON.stringify({ goal }) });
+      const d2 = await api('/api/learn/courses');
+      lnCur = d2.courses.find(x => x.id === d.id) || lnCur;
+    }
+    $('#lnInput').value = '';
     renderLnChat(); renderLnCourses(); loadDeskCourses();
   } catch (e) { toast(e.message, 4200); }
-  finally { btn.disabled = false; btn.textContent = t('learnSend'); }
-};
-$('#lnRefine').onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('#lnRefineBtn').onclick(); } };
-$('#lnRefineBtn').onclick = async () => {
-  if (!lnCur) return;
-  const goal = $('#lnRefine').value.trim();
-  if (!goal) return;
-  const btn = $('#lnRefineBtn');
-  btn.disabled = true; btn.textContent = t('learnRefining');
-  try {
-    await api('/api/learn/plan/' + lnCur.id + '/refine', { method: 'POST',
-      body: JSON.stringify({ goal }) });
-    const d = await api('/api/learn/courses');
-    lnCur = d.courses.find(x => x.id === lnCur.id) || lnCur;
-    $('#lnRefine').value = '';
-    renderLnChat(); renderLnCourses(); loadDeskCourses();
-  } catch (e) { toast(e.message, 4200); }
-  finally { btn.disabled = false; btn.textContent = t('learnRefineBtn'); }
+  finally { btn.disabled = false; lnSyncInput(); }
 };
 /* 关联外部书：小选书弹层 */
 let linkTarget = null;
