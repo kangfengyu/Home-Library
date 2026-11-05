@@ -396,7 +396,15 @@
   .rv-back { font-size:12.5px; color:var(--sub); border-top:1px dashed var(--line);
              margin-top:8px; padding-top:8px; line-height:1.7; }
   /* 书桌 · 概念库 */
+  .desk-zone { border:1px solid var(--line); border-radius:12px; background:var(--panel);
+               padding:14px 16px 16px; margin-bottom:18px; }
+  .zone-h { font-size:12px; letter-spacing:.14em; font-weight:700; color:var(--sub);
+            margin:0 0 12px; }
   .concept-chips { display:flex; flex-wrap:wrap; gap:8px; margin:8px 0 10px; }
+  /* 概念胶囊/时间线重点章节徽标复用 .chip 时必须去掉书封角标的绝对定位 */
+  .concept-chips .chip, .ls-book .chip, .ls-focus .chip {
+    position:static; top:auto; right:auto; z-index:auto; font-family:inherit; }
+  .tutor-list { display:flex; flex-direction:column; gap:8px; max-height:352px; overflow-y:auto; }
   .desk-tip { font-size:12px; color:var(--sub); line-height:1.7; width:100%; }
   .chip { background:var(--panel2); border:1px solid var(--line); border-radius:999px;
           padding:4px 12px; font-size:12.5px; cursor:pointer; color:var(--txt); }
@@ -692,48 +700,54 @@
   </header>
 
   <main>
-    <!-- 书桌：复习调度 + 最近阅读 + 概念库 + AI老师 + 统计 -->
+    <!-- 书桌：学习区（复习/课程/AI老师/概念库） + 阅读区（最近阅读/统计/荐书） -->
     <section id="view-desk" class="hide">
-      <div class="desk-review" id="deskReview">
-        <div class="dr-txt"><b data-i18n="reviewToday">今日复习</b>
-          <span id="reviewDueTxt">—</span></div>
-        <button class="btn primary" id="reviewStart" data-i18n="reviewStart">开始复习</button>
+      <div class="desk-zone">
+        <div class="zone-h" data-i18n="deskZoneLearn">📚 学习</div>
+        <div class="desk-review" id="deskReview">
+          <div class="dr-txt"><b data-i18n="reviewToday">今日复习</b>
+            <span id="reviewDueTxt">—</span></div>
+          <button class="btn primary" id="reviewStart" data-i18n="reviewStart">开始复习</button>
+        </div>
+        <div class="desk-sec hide" id="deskCourseSec">
+          <h3 class="sect-title" data-i18n="myCourses">我的课程</h3>
+          <div id="deskCourses"></div>
+        </div>
+        <div class="desk-sec hide" id="deskTutorSec">
+          <h3 class="sect-title" data-i18n="tutorTitle">AI老师</h3>
+          <div id="deskTutor" class="tutor-list"></div>
+        </div>
+        <div class="desk-sec hide" id="deskConceptSec">
+          <h3 class="sect-title" data-i18n="conceptTitle">概念库</h3>
+          <div class="concept-chips" id="conceptChips"></div>
+          <button class="btn mini" id="conceptAll" data-i18n="conceptAll">查看全部</button>
+        </div>
       </div>
-      <div class="desk-sec" id="deskRecentSec">
-        <h3 class="sect-title" data-i18n="shelfTitle">最近阅读 · 书案陈编</h3>
-        <div class="recent-grid" id="recentGrid"></div>
-        <div id="recentEmpty" class="empty hide"></div>
-      </div>
-      <div class="desk-sec hide" id="deskCourseSec">
-        <h3 class="sect-title" data-i18n="myCourses">我的课程</h3>
-        <div id="deskCourses"></div>
-      </div>
-      <div class="desk-sec hide" id="deskTutorSec">
-        <h3 class="sect-title" data-i18n="tutorTitle">AI老师</h3>
-        <div id="deskTutor"></div>
-      </div>
-      <div class="desk-sec hide" id="deskConceptSec">
-        <h3 class="sect-title" data-i18n="conceptTitle">概念库</h3>
-        <div class="concept-chips" id="conceptChips"></div>
-        <button class="btn mini" id="conceptAll" data-i18n="conceptAll">查看全部</button>
-      </div>
-      <div class="stat-cards">
-        <div class="stat"><div class="v" id="myToday">—</div><div class="l" data-i18n="statToday">今日阅读时长</div></div>
-        <div class="stat"><div class="v" id="myTotal">—</div><div class="l" data-i18n="statTotal">累计阅读时长</div></div>
-        <div class="stat"><div class="v" id="myFinished">—</div><div class="l" data-i18n="statFinished">已读完</div></div>
-      </div>
-      <h3 class="sect-title" data-i18n="statsTitle">全部账户阅读统计（互相可见）</h3>
-      <table class="stats" id="statsTable"></table>
-      <p style="font-size:11.5px; color:var(--sub); margin:10px 4px;" data-i18n="meNote">
-        时长按阅读器页面可见时间累计（约每 15 秒上报一次）；“已读完”为阅读进度达到 98% 的书籍数量。</p>
+      <div class="desk-zone">
+        <div class="zone-h" data-i18n="deskZoneRead">📖 阅读</div>
+        <div class="desk-sec" id="deskRecentSec">
+          <h3 class="sect-title" data-i18n="shelfTitle">最近阅读 · 书案陈编</h3>
+          <div class="recent-grid" id="recentGrid"></div>
+          <div id="recentEmpty" class="empty hide"></div>
+        </div>
+        <div class="stat-cards">
+          <div class="stat"><div class="v" id="myToday">—</div><div class="l" data-i18n="statToday">今日阅读时长</div></div>
+          <div class="stat"><div class="v" id="myTotal">—</div><div class="l" data-i18n="statTotal">累计阅读时长</div></div>
+          <div class="stat"><div class="v" id="myFinished">—</div><div class="l" data-i18n="statFinished">已读完</div></div>
+        </div>
+        <h3 class="sect-title" data-i18n="statsTitle">全部账户阅读统计（互相可见）</h3>
+        <table class="stats" id="statsTable"></table>
+        <p style="font-size:11.5px; color:var(--sub); margin:10px 4px;" data-i18n="meNote">
+          时长按阅读器页面可见时间累计（约每 15 秒上报一次）；“已读完”为阅读进度达到 98% 的书籍数量。</p>
 
-      <h3 class="sect-title" data-i18n="recoTitle">家人荐书</h3>
-      <div class="subtle-h" data-i18n="recoReceived">收到的推荐</div>
-      <div id="recoReceived"></div>
-      <div class="subtle-h" data-i18n="recoSent">我发出的</div>
-      <div id="recoSent"></div>
-      <p style="font-size:11.5px; color:var(--sub); margin:8px 2px;" data-i18n="recoTip">
-        在书库或最近阅读的书封上点「荐」即可把书推荐给家人。</p>
+        <h3 class="sect-title" data-i18n="recoTitle">家人荐书</h3>
+        <div class="subtle-h" data-i18n="recoReceived">收到的推荐</div>
+        <div id="recoReceived"></div>
+        <div class="subtle-h" data-i18n="recoSent">我发出的</div>
+        <div id="recoSent"></div>
+        <p style="font-size:11.5px; color:var(--sub); margin:8px 2px;" data-i18n="recoTip">
+          在书库或最近阅读的书封上点「荐」即可把书推荐给家人。</p>
+      </div>
     </section>
 
     <!-- AI荐学：学习规划 chat（同费曼布局） -->
@@ -1189,6 +1203,7 @@ const STR_I = {
     conceptToReview: '加入复习', conceptPh: '搜索概念…',
     conceptGuide: '速读完一本书后，书里的核心概念会自动沉淀到这里。',
     tab_learn: 'AI荐学', view_learn: 'AI荐学', learnHistory: '我的课程',
+    deskZoneLearn: '📚 学习', deskZoneRead: '📖 阅读',
     myCourses: '我的课程', courseStep: (a, b) => `第 ${a}/${b} 步`,
     courseNext: '下一本', courseGo: '继续学习',
     learnPh: '告诉我你想学什么、解决什么问题、达到什么程度…',
@@ -1349,6 +1364,7 @@ const STR_I = {
     conceptToReview: 'To review', conceptPh: 'Search concepts…',
     conceptGuide: 'After a speed-read finishes, the core concepts of the book settle here automatically.',
     tab_learn: 'AI Learn', view_learn: 'AI Learn', learnHistory: 'My courses',
+    deskZoneLearn: '📚 Study', deskZoneRead: '📖 Reading',
     myCourses: 'My courses', courseStep: (a, b) => `Step ${a}/${b}`,
     courseNext: 'Next book', courseGo: 'Continue',
     learnPh: 'Tell me what you want to learn, solve, or achieve…',
