@@ -18,6 +18,7 @@ By combining the Feynman Technique, first-principles reading, and the Ebbinghaus
 - **Feynman Examination** — teach the book to an AI "newbie" that keeps asking follow-up questions, then get a mastery score plus a list of what you didn't really understand
 - **AI Speed-Read** — a Map-Reduce pipeline digests the whole book in parallel chunks into a deep report (core thesis / load-bearing chapters / critiques / 3-sentence takeaway + action points)
 - **Spaced Review** — concepts, exam verdicts and tutor Q&As flow into one review queue, resurfacing on schedule per the Ebbinghaus curve
+- **Floating Question Cloud** — carry your questions into the book; only reading with a question in mind turns knowledge into ability
 - Plus: family bookshelf, multi-account progress & notes, a private "dark room" shelf, in-browser reading for EPUB / PDF / CBZ / CBR, and a bilingual (中文 / EN) interface
 
 ## 中文
@@ -31,6 +32,7 @@ By combining the Feynman Technique, first-principles reading, and the Ebbinghaus
 - **费曼考核** —— 把书讲给 AI「小白」听，它不断追问，结束后给出掌握度评分与「没懂的地方」清单
 - **AI 速读** —— Map-Reduce 流水线分块并行精读整本书，聚合深度报告（核心论旨 / 承重章节 / 批评视角 / 三句话讲透 + 行动点）
 - **间隔复习** —— 概念、考核结论、老师问答汇入同一复习队列，按艾宾浩斯曲线到期提醒
+- **问题悬浮云朵** —— 带着问题看书，才能把知识转化为能力
 - 以及：家庭书架、多账户进度与笔记、私密「暗格」、EPUB / PDF / CBZ / CBR 在线阅读、中英双语界面
 
 ## 界面 · Screenshots
@@ -50,6 +52,7 @@ By combining the Feynman Technique, first-principles reading, and the Ebbinghaus
   - PDF：PDF.js 渲染（CJK CMap 完整支持），懒加载、缩放
   - 漫画：按需解压逐页显示（防 OOM）
   - 全格式统一：单页/双页、左右翻页/上下滚动、日间/夜间模式、全屏
+  - 问题悬浮云朵：带着问题看书，才能把知识转化为能力——阅读中随手记下待解答的问题，悬浮云朵全站常驻提醒、点开即看；划词可问 AI 老师，答案沉淀进学习闭环
 - **笔记**：阅读中划线原文（EPUB 文本批注 / PDF 选区矩形），可附想法；笔记页集中管理、点击跳回原文
 - **学习闭环**：
   - **AI 荐学**：目标 → 课程规划（推荐书单卡片，封面/理由/重点/收获）→ 对话式调整；外部书「待入库」标记，入库后自动关联
