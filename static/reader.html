@@ -128,6 +128,21 @@
   #hlTip .t b { color:var(--accent); margin-right:4px; }
   .br-hl-flash { outline:2px solid #f59e0b; outline-offset:1px; }
 
+  /* AI老师回答浮层 */
+  #tutorPanel { position:fixed; inset:0; z-index:90; background:rgba(10,14,22,.45);
+                display:flex; align-items:center; justify-content:center; padding:16px; }
+  #tutorPanel .tp-card { background:var(--panel); color:var(--txt); border:1px solid var(--line2);
+                border-radius:12px; max-width:560px; width:100%; max-height:80vh;
+                overflow-y:auto; padding:14px 16px; box-shadow:0 24px 48px -12px rgba(15,23,42,.4); }
+  #tutorPanel .tp-head { display:flex; align-items:center; gap:8px; font-size:11.5px;
+                color:var(--sub); margin-bottom:8px; }
+  #tutorPanel .tp-head .x { margin-left:auto; cursor:pointer; border:none; background:none;
+                color:var(--sub); font-size:14px; }
+  #tutorPanel .tp-quote { font-size:12px; color:var(--sub); border-left:3px solid var(--accent);
+                padding-left:8px; line-height:1.6; margin-bottom:8px; }
+  #tutorPanel .tp-q { font-size:13px; font-weight:600; margin-bottom:8px; }
+  #tutorPanel .tp-a { font-size:13.5px; line-height:1.8; white-space:pre-wrap; word-break:break-word; }
+
   #fail { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center;
           justify-content:center; gap:14px; color:var(--sub); font-size:14px; text-align:center; padding:20px; }
   #toast { position:fixed; bottom:26px; left:50%; transform:translateX(-50%); padding:10px 20px;
@@ -214,6 +229,18 @@
     <button class="btn" id="selCancel">取消</button>
     <button class="btn" id="selSave">✂ 仅划线</button>
     <button class="btn" id="selSaveThought">💬 划线并记想法</button>
+    <button class="btn" id="selAsk">🧑‍🏫 问AI老师</button>
+  </div>
+</div>
+
+<!-- AI老师回答浮层 -->
+<div id="tutorPanel" class="hide">
+  <div class="tp-card">
+    <div class="tp-head"><span id="tpSrc"></span>
+      <button class="x" id="tpClose">✕</button></div>
+    <div class="tp-quote" id="tpQuote"></div>
+    <div class="tp-q" id="tpQ"></div>
+    <div class="tp-a" id="tpA"></div>
   </div>
 </div>
 
@@ -228,6 +255,9 @@ const bookId = params.get('id');
 const noteAnchor = params.get('note');      // 从笔记页跳转
 let book = null, me = null;
 let notes = [];                              // 当前书划线（含 thoughts）
+let curChapter = '';                         // AI老师：当前 EPUB 章节名
+let curPdfPage = 0;                          // AI老师：当前 PDF 页码
+const tocLabels = {};                        // AI老师：spine href → 章节名
 
 /* ---------- 语言（与首页共享 br-lang） ---------- */
 let LANG = 'zh';
@@ -252,6 +282,8 @@ const STR = {
     firstPage:'已经是第一页了', lastPage:'已经是最后一页了',
     zoom:b=>'缩放 '+Math.round(b*100)+'%',
     selCancel:'取消', selOnly:'✂ 仅划线', selPlus:'💬 划线并记想法', selSave:'💾 保存划线+想法',
+    selAsk:'🧑‍🏫 问AI老师', askPh:'向AI老师提问…（留空 = 请老师讲解这段）',
+    askSend:'发送给AI老师', aiThinking:'AI老师思考中…', tutorSaved:'已收录到书桌 · AI老师',
     selThinkPh:'写下这一段的想法…（可留空，仅划线）',
     notesTitle:'本书笔记', notesEmpty:'还没有划线<br>阅读时选中一段文字即可划线',
     addThinkPh:'补充想法…', addThink:'记', goLogin:'去首页登录',
@@ -276,6 +308,8 @@ const STR = {
     firstPage:'Already at the first page', lastPage:'Already at the last page',
     zoom:b=>'Zoom '+Math.round(b*100)+'%',
     selCancel:'Cancel', selOnly:'✂ Highlight', selPlus:'💬 Highlight & add thought', selSave:'💾 Save',
+    selAsk:'🧑‍🏫 Ask AI tutor', askPh:'Ask the AI tutor… (empty = explain this passage)',
+    askSend:'Send to tutor', aiThinking:'Tutor is thinking…', tutorSaved:'Saved to Desk · AI tutor',
     selThinkPh:'Your thoughts on this passage… (optional)',
     notesTitle:'Highlights', notesEmpty:'No highlights yet<br>Select text while reading to highlight',
     addThinkPh:'Add a thought…', addThink:'Add', goLogin:'Sign in',
@@ -554,10 +588,12 @@ function hideHlTip() { $('#hlTip').classList.add('hide'); }
 let pendingSel = null;   // { kind:'epub', cfi, text } | { kind:'pdf', page, rects, text }
 function showSelBar(p) {
   pendingSel = p;
+  if (p.kind === 'pdf') curPdfPage = p.page || curPdfPage;
   $('#selBar .txt').textContent = '“' + p.text.slice(0, 120) + (p.text.length > 120 ? '…' : '') + '”';
   $('#selThought').classList.add('hide'); $('#selThought').value = '';
   $('#selSave').textContent = t('selOnly');
   $('#selSaveThought').textContent = t('selPlus');
+  $('#selAsk').textContent = t('selAsk');
   $('#selBar').classList.remove('hide');
 }
 function hideSelBar() { $('#selBar').classList.add('hide'); pendingSel = null; blurUI(); }
@@ -572,6 +608,50 @@ $('#selSaveThought').onclick = () => {
   } else doCreateNote(box.value.trim());
 };
 $('#selThought').onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doCreateNote($('#selThought').value.trim()); } };
+/* ---------- AI老师：两段式（先出提问框，再发送） ---------- */
+$('#selAsk').onclick = () => {
+  const box = $('#selThought'), btn = $('#selAsk');
+  if (box.classList.contains('hide')) {
+    box.classList.remove('hide');
+    box.placeholder = t('askPh');
+    btn.textContent = t('askSend');
+    box.focus();
+  } else doAsk(box.value.trim());
+};
+async function doAsk(question) {
+  if (!pendingSel) return;
+  if (!me) { toast(t('notLogin')); return; }
+  const p = pendingSel, btn = $('#selAsk');
+  const anchor = p.kind === 'epub' ? JSON.stringify({ type: 'epub', cfi: p.cfi, start: epubPointCfi(p.cfi) })
+                                   : JSON.stringify({ type: 'pdf', page: p.page, rects: p.rects });
+  const chapter = p.kind === 'epub' ? (curChapter || '') : `第 ${(p.page || curPdfPage || 1)} 页`;
+  btn.disabled = true; btn.textContent = t('aiThinking');
+  try {
+    const r = await fetch('/api/tutor/ask', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ book_id: bookId, anchor, chapter, quote: p.text, question })
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.detail || ('HTTP ' + r.status));
+    showTutor(chapter, p.text, question, d.answer);
+    toast(t('tutorSaved'), 2600);
+    hideSelBar(); clearSelection();
+  } catch (e) { toast(e.message, 4200); }
+  finally { btn.disabled = false; btn.textContent = t('selAsk'); }
+}
+function showTutor(chapter, quote, question, answer) {
+  $('#tpSrc').textContent = ((book && book.title) ? '《' + book.title + '》' : '') + ' · ' + (chapter || '');
+  $('#tpQuote').textContent = '“' + quote.slice(0, 120) + (quote.length > 120 ? '…' : '') + '”';
+  $('#tpQ').textContent = question || '';
+  $('#tpQ').style.display = question ? '' : 'none';
+  $('#tpA').textContent = answer || '';
+  $('#tutorPanel').classList.remove('hide');
+}
+$('#tpClose').onclick = () => $('#tutorPanel').classList.add('hide');
+$('#tutorPanel').onclick = e => { if (e.target.id === 'tutorPanel') $('#tutorPanel').classList.add('hide'); };
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') $('#tutorPanel').classList.add('hide');
+});
 async function doCreateNote(thought) {
   if (!pendingSel) return;
   if (!me) { toast('请先登录后再划线'); location.href = '/?view=recent'; return; }
@@ -844,6 +924,7 @@ async function initEpub() {
       if (!s) return;
       const total = epub.spine ? epub.spine.length : 0;
       lastCfi = s.cfi;
+      if (s.href) curChapter = tocLabels[(s.href || '').split('#')[0]] || curChapter;
       window._lastCfi = s.cfi;   // 调试钩子：可从控制台核对切章基准
       setPos(total ? `${(s.index || 0) + 1} / ${total} 章` : '');
       const pct = total ? (s.index + 1) / total : 0;
@@ -1101,10 +1182,13 @@ async function initEpub() {
     const list = $('#tocList');
     const walk = (items, depth) => {
       items.forEach(it => {
+        const label = (it.label || it.title || '未命名').trim();
         const a = document.createElement('a');
-        a.textContent = '　'.repeat(depth) + (it.label || it.title || '未命名').trim();
+        a.textContent = '　'.repeat(depth) + label;
         a.onclick = () => { rendition.display(it.href); $('#toc').classList.remove('open'); };
         list.appendChild(a);
+        const base = (it.href || '').split('#')[0];
+        if (base && !tocLabels[base]) tocLabels[base] = label;   // AI老师：href → 章节名
         if (it.subitems && it.subitems.length) walk(it.subitems, depth + 1);
       });
     };

@@ -798,6 +798,39 @@ def link_pending_steps(book_id: int, title: str, author: str = "") -> int:
     return hit
 
 
+# ---------------------------------------------------------------- AI老师（划线追问）
+
+
+def add_tutor_qa(user_id: int, book_id: int, anchor: str, chapter: str,
+                 quote: str, question: str, answer: str) -> int:
+    now = time.time()
+    with _lock:
+        cur = _check().execute(
+            "INSERT INTO tutor_qa(user_id, book_id, anchor, chapter, quote, question, "
+            "answer, created_at) VALUES(?,?,?,?,?,?,?,?)",
+            (user_id, book_id, anchor or "", (chapter or "")[:80],
+             (quote or "")[:500], (question or "")[:500], (answer or "")[:4000], now))
+        _conn.commit()
+        return cur.lastrowid
+
+
+def list_tutor_qa(user_id: int, limit: int = 30,
+                  include_private: bool = False) -> list:
+    priv = "" if include_private else " AND (b.is_private=0 OR b.is_private IS NULL)"
+    return query_all(
+        "SELECT q.*, b.title AS book_title FROM tutor_qa q "
+        "LEFT JOIN books b ON b.id = q.book_id "
+        f"WHERE q.user_id=?{priv} ORDER BY q.created_at DESC LIMIT ?", (user_id, limit))
+
+
+def delete_tutor_qa(user_id: int, qid: int) -> bool:
+    row = query_one("SELECT id FROM tutor_qa WHERE id=? AND user_id=?", (qid, user_id))
+    if row is None:
+        return False
+    execute("DELETE FROM tutor_qa WHERE id=?", (qid,))
+    return True
+
+
 # ---------------------------------------------------------------- AI 速读（Map-Reduce 流水线）
 
 

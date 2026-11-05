@@ -417,6 +417,18 @@
   .course-card .cc-main b { font-size:13.5px; display:block; }
   .course-card .cc-step { font-size:11.5px; color:var(--sub); }
   .course-card .cc-btns { margin-left:auto; display:flex; gap:6px; }
+  /* 书桌 · AI老师问答卡 */
+  .tutor-card { background:var(--panel); border:1px solid var(--line); border-radius:8px;
+                padding:10px 14px; margin-bottom:8px; }
+  .tutor-card .tc-src { font-size:11px; color:var(--sub); }
+  .tutor-card .tc-quote { font-size:12px; color:var(--sub); border-left:3px solid #C28E5C;
+                          padding-left:8px; margin:6px 0; }
+  .tutor-card .tc-q { font-size:12.5px; font-weight:600; margin-bottom:4px; }
+  .tutor-card .tc-a { font-size:12px; line-height:1.7; max-height:54px; overflow:hidden;
+                      position:relative; }
+  .tutor-card.open .tc-a { max-height:none; }
+  .tutor-card .tc-a { cursor:pointer; }
+  .tutor-card .tc-btns { margin-top:6px; display:flex; gap:6px; }
   /* AI荐学 */
   .learn-wrap { display:grid; grid-template-columns:220px 1fr; gap:16px; }
   .learn-side { border-right:1px solid var(--line); padding-right:12px; }
@@ -710,6 +722,10 @@
       <div class="desk-sec hide" id="deskCourseSec">
         <h3 class="sect-title" data-i18n="myCourses">我的课程</h3>
         <div id="deskCourses"></div>
+      </div>
+      <div class="desk-sec hide" id="deskTutorSec">
+        <h3 class="sect-title" data-i18n="tutorTitle">AI老师</h3>
+        <div id="deskTutor"></div>
       </div>
       <div class="desk-sec hide" id="deskConceptSec">
         <h3 class="sect-title" data-i18n="conceptTitle">概念库</h3>
@@ -1180,6 +1196,7 @@ const STR_I = {
     learnRefining: '正在规划…',
     stepPending: '待入库', stepLink: '关联此书', stepLinked: '已关联',
     stepOutcome: '读完你会',
+    tutorTitle: 'AI老师', tutorJump: '回到原文',
     searchPh: '搜索书名 / 作者…', rescan: '↻ 重新扫描',
     ready: '就绪', scanning: n => `扫描中… 待处理 ${n}`, booksN: n => `藏书 ${n} 种`,
     shelfTitle: '最近阅读 · 书案陈编',
@@ -1333,6 +1350,7 @@ const STR_I = {
     learnRefining: 'Planning…',
     stepPending: 'To add', stepLink: 'Link book', stepLinked: 'Linked',
     stepOutcome: 'After reading you will',
+    tutorTitle: 'AI tutor', tutorJump: 'Back to text',
     searchPh: 'Search title / author…', rescan: '↻ Rescan',
     ready: 'Ready', scanning: n => `Scanning… ${n} pending`, booksN: n => `${n} books`,
     shelfTitle: 'Recently read · on the desk',
@@ -1544,6 +1562,42 @@ async function loadDesk() {
   loadMe();
   loadConcepts();
   loadDeskCourses();
+  loadDeskTutor();
+}
+
+/* ---- AI老师（书桌问答卡） ---- */
+async function loadDeskTutor() {
+  const sec = $('#deskTutorSec'), box = $('#deskTutor');
+  if (!me) { sec.classList.add('hide'); return; }
+  try {
+    const d = await api('/api/tutor/list?limit=10');
+    if (!d.items.length) { sec.classList.add('hide'); return; }
+    sec.classList.remove('hide');
+    box.innerHTML = '';
+    d.items.forEach(it => {
+      const div = document.createElement('div');
+      div.className = 'tutor-card';
+      div.innerHTML =
+        `<div class="tc-head"><span class="tc-src">${it.book_title ? '《' + esc(it.book_title) + '》' : ''}${it.chapter ? ' · ' + esc(it.chapter) : ''}</span></div>
+         <div class="tc-quote">“${esc((it.quote || '').slice(0, 40))}${(it.quote || '').length > 40 ? '…' : ''}”</div>
+         ${it.question ? `<div class="tc-q">${esc(it.question)}</div>` : ''}
+         <div class="tc-a">${esc(it.answer || '')}</div>
+         <div class="tc-btns">
+           <button class="btn mini" data-act="jump">${t('tutorJump')}</button>
+           <button class="btn mini" data-act="del">✕</button>
+         </div>`;
+      div.querySelector('[data-act=jump]').onclick = () =>
+        location.href = '/reader?id=' + it.book_id + '&note=' + encodeURIComponent(it.anchor || '');
+      div.querySelector('.tc-a').onclick = () => div.classList.toggle('open');
+      div.querySelector('[data-act=del]').onclick = async () => {
+        try {
+          await api('/api/tutor/' + it.id, { method: 'DELETE' });
+          loadDeskTutor();
+        } catch (e) { toast(e.message); }
+      };
+      box.appendChild(div);
+    });
+  } catch (e) { if (e.message !== 'unauthorized') sec.classList.add('hide'); }
 }
 
 /* ---- 我的课程（书桌卡） ---- */
