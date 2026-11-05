@@ -688,7 +688,6 @@
     </div>
     <div class="userbar hide" id="userRow">
       <span class="uname ui" id="uname"></span>
-      <button class="sbtn" id="mePassBtn" data-i18n-title="passTitle" title="修改密码">🔑</button>
       <button class="sbtn" id="logoutBtn" data-i18n="signOut">退出</button>
     </div>
   </div>
@@ -894,11 +893,11 @@
       <div id="questionsEmpty" class="empty hide"></div>
     </section>
 
-    <!-- 设置（仅管理员）：账户管理 + 备份 + LLM 配置 -->
+    <!-- 设置：账户管理（全员可见自己账户；其余模块仅管理员） + 备份/上传/LLM（管理员） -->
     <section id="view-settings" class="hide">
       <h3 class="sect-title" data-i18n="usersTitle">账户管理</h3>
       <div id="userList"></div>
-      <div class="qform" style="margin-top:14px; flex-direction:row; align-items:center;
+      <div class="qform admin-only hide" style="margin-top:14px; flex-direction:row; align-items:center;
            flex-wrap:wrap; gap:10px;">
         <input type="text" id="newUser" style="flex:1 1 130px; width:auto;" data-i18n-ph="newUser" placeholder="新用户名"/>
         <input type="password" id="newPass" style="flex:1 1 130px; width:auto;" data-i18n-ph="newPass" placeholder="密码（≥4 位）"/>
@@ -909,15 +908,15 @@
         <div class="err" id="userErr" style="min-height:0; flex:1 1 100%; margin:0;"></div>
       </div>
 
-      <h3 class="sect-title" style="margin-top:34px;" data-i18n="backupTitle">备份</h3>
-      <div class="qform" style="flex-direction:row; align-items:center; flex-wrap:wrap; gap:12px;">
+      <h3 class="sect-title admin-only hide" style="margin-top:34px;" data-i18n="backupTitle">备份</h3>
+      <div class="qform admin-only hide" style="flex-direction:row; align-items:center; flex-wrap:wrap; gap:12px;">
         <p style="flex:1 1 320px; font-size:12px; color:var(--sub); line-height:1.7; margin:0;"
            data-i18n="backupNote2">备份文件直接生成在服务器磁盘 data/exports/ 目录（绕开浏览器下载），在文件管理器中打开即可查看/拷贝；换设备时连同 library/ 目录一起迁移。</p>
         <button class="btn" id="exportBtn" style="flex:none;">⬇ <span data-i18n="exportBackup">导出数据备份</span></button>
       </div>
 
-      <h3 class="sect-title" style="margin-top:34px;" data-i18n="uploadTitle">书籍上传</h3>
-      <div class="qform" style="flex-direction:row; align-items:center; flex-wrap:wrap; gap:12px;">
+      <h3 class="sect-title admin-only hide" style="margin-top:34px;" data-i18n="uploadTitle">书籍上传</h3>
+      <div class="qform admin-only hide" style="flex-direction:row; align-items:center; flex-wrap:wrap; gap:12px;">
         <input type="file" id="uploadInput" multiple accept=".epub,.pdf,.cbz,.cbr" style="display:none"/>
         <button class="btn primary" id="uploadBtn" style="flex:none;">⬆ <span data-i18n="uploadBtn">选择文件上传</span></button>
         <div style="flex:1 1 240px; display:flex; align-items:center; gap:10px; min-width:0;">
@@ -929,8 +928,8 @@
            data-i18n="uploadHint">支持 EPUB / PDF / CBZ / CBR（可多选），默认上传到书库根目录；内容重复会提示书库已有并跳过，同名不同内容自动加序号；上传后自动扫描入库。</p>
       </div>
 
-      <h3 class="sect-title" style="margin-top:34px;" data-i18n="llmTitle">LLM 配置（AI 功能前置）</h3>
-      <div class="qform">
+      <h3 class="sect-title admin-only hide" style="margin-top:34px;" data-i18n="llmTitle">LLM 配置（AI 功能前置）</h3>
+      <div class="qform admin-only hide">
         <div style="display:flex; gap:10px; flex-wrap:wrap;">
           <label style="flex:1 1 140px"><span data-i18n="llmProto">协议</span>
             <select id="llmProto">
@@ -2519,7 +2518,8 @@ $('#logoutBtn').onclick = async () => {
 function applyUser() {
   $('#loginBtn').classList.toggle('hide', !!me);
   $('#tabVault').classList.toggle('hide', !(me && me.is_admin));
-  $('#tabSettings').classList.toggle('hide', !(me && me.is_admin));
+  $('#tabSettings').classList.toggle('hide', !me);   // 设置全员可见：非管理员只看自己账户
+  $$('#view-settings .admin-only').forEach(el => el.classList.toggle('hide', !(me && me.is_admin)));
   $('#userRow').classList.toggle('hide', !me);
   $('#qCloud').classList.toggle('hide', !me);   // 云朵：登录后显示
   if (me) $('#uname').innerHTML = (me.is_admin ? ICON_SHIELD : ICON_USER) +
@@ -2529,42 +2529,45 @@ function applyUser() {
 
 /* ---------- 账户管理（设置页内） ---------- */
 async function renderUsers() {
+  const list = $('#userList');
+  list.innerHTML = '';
+  // 非管理员：不走管理员接口，只渲染自己一行（改密入口）
+  let users;
   try {
-    const data = await api('/api/auth/users');
-    const list = $('#userList');
-    list.innerHTML = '';
-    data.users.forEach(u => {
-      const row = document.createElement('div');
-      row.className = 'user-row';
-      row.innerHTML = `<span>👤 ${esc(u.username)}</span>` +
-        (u.is_admin ? '<span class="tag">' + t('adminTag') + '</span>' : '') +
-        `<span style="flex:1"></span><span style="font-size:11px;color:var(--sub)">${fmtTime(u.created_at)}</span>`;
-      if (me) {
-        const pw = document.createElement('button');
-        pw.className = 'btn';
-        pw.style.cssText = 'flex:none;padding:4px 10px;font-size:12px;';
-        pw.textContent = t('rowPassBtn');
-        pw.onclick = () => openPassModal(u.id, u.username);
-        row.appendChild(pw);
-      }
-      if (me && u.id !== me.id) {
-        const del = document.createElement('button');
-        del.className = 'btn';
-        del.style.cssText = 'flex:none;padding:4px 10px;font-size:12px;';
-        del.textContent = t('delUserBtn');
-        del.onclick = async () => {
-          if (!confirm(t('delUserAsk')(u.username))) return;
-          try {
-            await api('/api/auth/users/' + u.id, { method: 'DELETE' });
-            toast(t('userDeleted'));
-            renderUsers();
-          } catch (e) { toast(e.message, 3200); }
-        };
-        row.appendChild(del);
-      }
-      list.appendChild(row);
-    });
-  } catch (e) { $('#userErr').textContent = e.message; }
+    users = (me && me.is_admin) ? (await api('/api/auth/users')).users : [me];
+  } catch (e) { $('#userErr').textContent = e.message; return; }
+  users.forEach(u => {
+    const row = document.createElement('div');
+    row.className = 'user-row';
+    row.innerHTML = `<span>👤 ${esc(u.username)}</span>` +
+      (u.is_admin ? '<span class="tag">' + t('adminTag') + '</span>' : '') +
+      `<span style="flex:1"></span>` +
+      (u.created_at ? `<span style="font-size:11px;color:var(--sub)">${fmtTime(u.created_at)}</span>` : '');
+    if (me) {
+      const pw = document.createElement('button');
+      pw.className = 'btn';
+      pw.style.cssText = 'flex:none;padding:4px 10px;font-size:12px;';
+      pw.textContent = t('rowPassBtn');
+      pw.onclick = () => openPassModal(u.id, u.username);
+      row.appendChild(pw);
+    }
+    if (me && u.id !== me.id) {
+      const del = document.createElement('button');
+      del.className = 'btn';
+      del.style.cssText = 'flex:none;padding:4px 10px;font-size:12px;';
+      del.textContent = t('delUserBtn');
+      del.onclick = async () => {
+        if (!confirm(t('delUserAsk')(u.username))) return;
+        try {
+          await api('/api/auth/users/' + u.id, { method: 'DELETE' });
+          toast(t('userDeleted'));
+          renderUsers();
+        } catch (e) { toast(e.message, 3200); }
+      };
+      row.appendChild(del);
+    }
+    list.appendChild(row);
+  });
 }
 $('#userAdd').onclick = async () => {
   try {
@@ -2590,7 +2593,6 @@ function openPassModal(uid, uname) {
   $('#passModal').classList.remove('hide');
   setTimeout(() => (self ? $('#passOld') : $('#passNew')).focus(), 50);
 }
-$('#mePassBtn').onclick = () => openPassModal(me.id, me.username);
 $('#passCancel').onclick = () => $('#passModal').classList.add('hide');
 $('#passModal').onclick = e => { if (e.target === $('#passModal')) $('#passModal').classList.add('hide'); };
 $('#passNew').addEventListener('keydown', e => { if (e.key === 'Enter') $('#passOk').click(); });
@@ -3328,8 +3330,9 @@ $('#qCloudInput').addEventListener('keydown', e => {
 
 /* ---------- 设置页：账户 + LLM ---------- */
 async function loadSettings() {
-  if (!me || !me.is_admin) return;
-  renderUsers();
+  if (!me) return;
+  renderUsers();                       // 全员：非管理员只渲染自己一行
+  if (!me.is_admin) return;            // LLM 表单加载仅管理员
   try {
     const c = await api('/api/settings/llm');
     $('#llmProto').value = c.protocol || 'anthropic';
