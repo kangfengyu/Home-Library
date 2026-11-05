@@ -772,11 +772,21 @@ async function initEpub() {
   const epub = ePub('/api/file/' + bookId, { openAs: 'epub' });
   let rendition = null, lastCfi = null, fontSize = 110;
 
-  const EPUB_DAY_CSS = 'html, body { background:#FDFCF8 !important; color:#26231E !important; }';
-  // 夜读插图：白底垫板 + 对比增强（书内浅灰印刷图/文字保持可读）
-  const EPUB_NIGHT_CSS = 'html, body { background:#221E1B !important; color:#D8CFC2 !important; }' +
-                         'a { color:#C89B6E !important; }' +
-                         'img, svg { background:#FDFCF8 !important; filter:contrast(1.35) brightness(1.08); }';
+  const epubCss = dark =>
+    // 字号走 html !important：压过书内写死的 html/body font-size（txt 直转书的通病），
+    // 正文用 em/百分比的自然连锁缩放
+    `html { font-size: ${fontSize}% !important; }` +
+    'html, body { background:' + (dark ? '#221E1B' : '#FDFCF8') + ' !important; color:' +
+      (dark ? '#D8CFC2' : '#26231E') + ' !important; }' +
+    (dark
+      ? 'a { color:#C89B6E !important; }' +
+        // txt 直转书正文常带内联颜色/白底（<font color>、style="color:#000"、bgcolor），
+        // 内联声明优先于继承 → 夜间黑底黑字看不清：强制继承正文色（插图垫板规则在最后，img/svg 已排除）
+        'font, [style*="color"] { color: inherit !important; }' +
+        '[style*="background"]:not(img):not(svg), [bgcolor] { background: transparent !important; }' +
+        // 夜读插图：白底垫板 + 对比增强（书内浅灰印刷图/文字保持可读）
+        'img, svg { background:#FDFCF8 !important; filter:contrast(1.35) brightness(1.08); }'
+      : '');
   function paintIframes() {
     const dark = themeState.mode === 'dark';
     document.querySelectorAll('#stage iframe').forEach(f => {
@@ -784,7 +794,7 @@ async function initEpub() {
       if (!doc || !doc.head) return;
       let style = doc.getElementById('br-theme-style');
       if (!style) { style = doc.createElement('style'); style.id = 'br-theme-style'; doc.head.appendChild(style); }
-      style.textContent = dark ? EPUB_NIGHT_CSS : EPUB_DAY_CSS;
+      style.textContent = epubCss(dark);
       doc.querySelectorAll('svg[preserveAspectRatio="none"]').forEach(s =>
         s.setAttribute('preserveAspectRatio', 'xMidYMid meet'));
     });
@@ -1145,8 +1155,8 @@ async function initEpub() {
   addBtn(t('toc'), t('tocTip'), () => $('#toc').classList.toggle('open'));
   addBtn('◀', t('prev'), () => window._nav.prev(), true);
   addBtn('▶', t('next'), () => window._nav.next(), true);
-  addBtn('A-', t('fontDown'), () => { fontSize = Math.max(80, fontSize - 10); rendition.themes.fontSize(fontSize + '%'); schedSizeScroll(); });
-  addBtn('A+', t('fontUp'), () => { fontSize = Math.min(200, fontSize + 10); rendition.themes.fontSize(fontSize + '%'); schedSizeScroll(); });
+  addBtn('A-', t('fontDown'), () => { fontSize = Math.max(80, fontSize - 10); rendition.themes.fontSize(fontSize + '%'); paintIframes(); schedSizeScroll(); });
+  addBtn('A+', t('fontUp'), () => { fontSize = Math.min(200, fontSize + 10); rendition.themes.fontSize(fontSize + '%'); paintIframes(); schedSizeScroll(); });
 
   // 上下滚动模式：章内先按屏滚动，到章首/章尾才切章（scrolled 流下 rendition.next()
   // 内部会崩，用 spine 序号直接 display）；左右翻页模式直接 prev/next
