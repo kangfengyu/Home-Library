@@ -462,7 +462,10 @@
   .ln-step.cur .ls-no { border-color:#C28E5C; color:#C28E5C; }
   /* 步骤书卡：封面缩略图 + 右侧紧凑信息（对齐站点卡片风格） */
   .ls-card { flex:1; min-width:0; display:flex; gap:12px; padding:10px 12px;
-             background:var(--panel); border:1px solid var(--line); border-radius:8px; }
+             background:var(--panel); border:1px solid var(--line); border-radius:8px;
+             position:relative; }
+  .ls-card .chip.pending { position:absolute; top:8px; right:8px; z-index:2; margin:0; }
+  .ls-card.pending .ls-book { padding-right:66px; }
   .ln-step.cur .ls-card { border-color:#C28E5C; }
   .ls-cover { flex:0 0 48px; width:48px; aspect-ratio:100/145; border-radius:4px; overflow:hidden;
               background:var(--panel2); display:flex; align-items:center; justify-content:center;
@@ -1836,11 +1839,11 @@ function renderTimeline(c) {
       : `<span>${esc(st.title || '')}</span>`;
     d.innerHTML =
       `<div class="ls-no">${i + 1}</div>
-       <div class="ls-card">
+       <div class="ls-card${st.book_id ? '' : ' pending'}">
+         ${st.book_id ? '' : `<span class="chip pending">${t('stepPending')}</span>`}
          <div class="ls-cover">${cover}</div>
          <div class="ls-body">
-           <div class="ls-book">《${esc(st.title || '')}》${st.author ? `<span class="ls-author">· ${esc(st.author)}</span>` : ''}
-             ${st.book_id ? '' : `<span class="chip pending">${t('stepPending')}</span>`}</div>
+           <div class="ls-book">《${esc(st.title || '')}》${st.author ? `<span class="ls-author">· ${esc(st.author)}</span>` : ''}</div>
            <div class="ls-why">${esc(st.why || '')}</div>
            ${focusHtml ? `<div class="ls-focus">${focusHtml}</div>` : ''}
            ${st.outcome ? `<div class="ls-out">${t('stepOutcome')}：${esc(st.outcome)}</div>` : ''}
