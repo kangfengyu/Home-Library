@@ -194,7 +194,12 @@
   .shelf-title { font-family:"Noto Serif SC",serif; font-size:14px; color:var(--accent-deep);
                  letter-spacing:.42em; margin:0 0 18px 4px; font-weight:600; }
   body.night .shelf-title { color:var(--accent); }
-  .recent-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(152px,1fr)); gap:20px 18px; }
+  /* 最近阅读：单行书架，可左右拖动/滚动查看 */
+  .recent-grid { display:flex; gap:18px; overflow-x:auto; padding:2px 2px 10px;
+                 cursor:grab; user-select:none; scrollbar-width:thin;
+                 scrollbar-color:var(--line) transparent; }
+  .recent-grid.dragging { cursor:grabbing; }
+  .recent-grid .slot { flex:0 0 152px; }
   .slot { display:flex; flex-direction:column; }
   .slot .book { flex:1; }
   .slot .board { height:8px; margin-top:9px; border-radius:2px;
@@ -258,7 +263,8 @@
   .empty .btn { margin-top:14px; }
 
   /* ================= 个人中心 ================= */
-  .stat-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:16px; }
+  .stat-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:16px;
+                margin-top:22px; }
   .stat { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:22px;
           text-align:center; }
   .stat .v { font-family:"Noto Serif SC",serif; font-size:26px; font-weight:700; color:var(--txt); }
@@ -390,13 +396,10 @@
   .desk-review { display:flex; align-items:center; gap:12px; background:var(--panel);
                  border:1px solid var(--line); border-left:3px solid #C28E5C; border-radius:8px;
                  padding:12px 16px; margin-bottom:14px; flex-wrap:wrap; }
-  .desk-review .dr-txt b { font-size:13.5px; margin-right:8px; }
   .desk-review .dr-txt span { color:var(--sub); font-size:12.5px; }
   .rv-front { font-size:15px; line-height:1.8; min-height:64px; padding:6px 2px; }
   .rv-back { font-size:12.5px; color:var(--sub); border-top:1px dashed var(--line);
              margin-top:8px; padding-top:8px; line-height:1.7; }
-  /* 书桌 · 学习/阅读两组的小节标签（沿用 subtle-h 体系，不加盒子） */
-  .desk-gap { margin:20px 4px 6px; letter-spacing:.1em; }
   /* 概念胶囊/时间线重点章节徽标复用 .chip 时必须去掉书封角标的绝对定位 */
   .ls-book .chip, .ls-focus .chip {
     position:static; top:auto; right:auto; z-index:auto; font-family:inherit; }
@@ -618,7 +621,8 @@
     main { padding:12px 16px 40px; }
     #search { width:100%; }
     #grid, .vaultGrid { grid-template-columns:repeat(auto-fill,minmax(128px,1fr)); gap:12px; }
-    .recent-grid { grid-template-columns:repeat(auto-fill,minmax(124px,1fr)); gap:12px; }
+    .recent-grid { gap:12px; }
+    .recent-grid .slot { flex-basis:124px; }
     .shelf { padding:16px 12px 20px; }
     .head-actions { width:100%; }
     .fy-wrap { grid-template-columns:minmax(0,1fr); }
@@ -703,10 +707,9 @@
   <main>
     <!-- 书桌：学习组（复习/课程/AI老师/概念库） + 阅读组（最近阅读/统计/荐书） -->
     <section id="view-desk" class="hide">
-      <div class="subtle-h desk-gap" data-i18n="deskZoneLearn">📚 学习</div>
+      <h3 class="sect-title" data-i18n="reviewToday">今日复习</h3>
       <div class="desk-review" id="deskReview">
-        <div class="dr-txt"><b data-i18n="reviewToday">今日复习</b>
-          <span id="reviewDueTxt">—</span></div>
+        <div class="dr-txt"><span id="reviewDueTxt">—</span></div>
         <button class="btn primary" id="reviewStart" data-i18n="reviewStart">开始复习</button>
       </div>
       <div class="desk-sec hide" id="deskCourseSec">
@@ -724,7 +727,6 @@
         <div id="conceptList" class="concept-list"></div>
       </div>
 
-      <div class="subtle-h desk-gap" data-i18n="deskZoneRead">📖 阅读</div>
       <div class="desk-sec" id="deskRecentSec">
         <h3 class="sect-title" data-i18n="shelfTitle">最近阅读 · 书案陈编</h3>
         <div class="recent-grid" id="recentGrid"></div>
@@ -1189,7 +1191,6 @@ const STR_I = {
     conceptToReview: '加入复习', conceptPh: '搜索概念…',
     conceptGuide: '速读完一本书后，书里的核心概念会自动沉淀到这里。',
     tab_learn: 'AI荐学', view_learn: 'AI荐学', learnHistory: '我的课程',
-    deskZoneLearn: '📚 学习', deskZoneRead: '📖 阅读',
     myCourses: '我的课程', courseStep: (a, b) => `第 ${a}/${b} 步`,
     courseNext: '下一本', courseGo: '继续学习',
     learnPh: '告诉我你想学什么、解决什么问题、达到什么程度…',
@@ -1349,7 +1350,6 @@ const STR_I = {
     conceptToReview: 'To review', conceptPh: 'Search concepts…',
     conceptGuide: 'After a speed-read finishes, the core concepts of the book settle here automatically.',
     tab_learn: 'AI Learn', view_learn: 'AI Learn', learnHistory: 'My courses',
-    deskZoneLearn: '📚 Study', deskZoneRead: '📖 Reading',
     myCourses: 'My courses', courseStep: (a, b) => `Step ${a}/${b}`,
     courseNext: 'Next book', courseGo: 'Continue',
     learnPh: 'Tell me what you want to learn, solve, or achieve…',
@@ -2067,6 +2067,25 @@ async function loadRecent() {
     if (e.message !== 'unauthorized') toast('加载失败：' + e.message);
   }
 }
+/* 最近阅读书架：鼠标按住左右拖动滚动（拖动超过阈值不再触发点书进阅读器） */
+(function () {
+  const g = $('#recentGrid');
+  let down = false, sx = 0, sl = 0, dx = 0;
+  g.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    down = true; dx = 0; sx = e.clientX; sl = g.scrollLeft;
+    g.classList.add('dragging');
+  });
+  window.addEventListener('pointermove', e => {
+    if (!down) return;
+    dx = e.clientX - sx;
+    g.scrollLeft = sl - dx;
+  });
+  window.addEventListener('pointerup', () => { down = false; g.classList.remove('dragging'); });
+  g.addEventListener('click', e => {
+    if (Math.abs(dx) > 6) { e.stopPropagation(); e.preventDefault(); }
+  }, true);
+})();
 
 /* ================= 书库 ================= */
 function renderCrumb(path) {
