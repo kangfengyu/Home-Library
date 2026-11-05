@@ -386,6 +386,15 @@
                    outline:none; }
   .fy-new select:focus { border-color:#C28E5C; }
   .fy-note { font-size:11.5px; color:var(--sub); line-height:1.8; margin:2px 4px; }
+  /* 书桌 · 复习调度 */
+  .desk-review { display:flex; align-items:center; gap:12px; background:var(--panel);
+                 border:1px solid var(--line); border-left:3px solid #C28E5C; border-radius:8px;
+                 padding:12px 16px; margin-bottom:14px; flex-wrap:wrap; }
+  .desk-review .dr-txt b { font-size:13.5px; margin-right:8px; }
+  .desk-review .dr-txt span { color:var(--sub); font-size:12.5px; }
+  .rv-front { font-size:15px; line-height:1.8; min-height:64px; padding:6px 2px; }
+  .rv-back { font-size:12.5px; color:var(--sub); border-top:1px dashed var(--line);
+             margin-top:8px; padding-top:8px; line-height:1.7; }
   .fy-sessions { display:flex; flex-direction:column; gap:6px; max-height:430px; overflow-y:auto; }
   .fy-session { background:var(--panel); border:1px solid var(--line); border-radius:8px;
                 padding:9px 12px; cursor:pointer; font-size:12.5px; }
@@ -572,12 +581,12 @@
   </div>
   <div class="divider"></div>
   <nav class="tabs">
-    <button class="tab active" data-view="recent" id="tabRecent">
-      <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6.5C10 5 7.4 4.6 5 5v12.5c2.4-.4 5 0 7 1.5 2-1.5 4.6-1.9 7-1.5V5c-2.4-.4-5 0-7 1.5z"/><path d="M12 6.5V19"/></svg></span>
-      <span data-i18n="tab_recent">最近阅读</span></button>
+    <button class="tab active" data-view="desk" id="tabDesk">
+      <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5h16"/><path d="M5.5 16.5L15 6a1.6 1.6 0 00-2.3-2.3L3.2 13.2l-.7 3 3-.7z"/><path d="M16.5 12l3 4.5h-6z"/></svg></span>
+      <span data-i18n="tab_desk">书桌</span></button>
     <button class="tab" data-view="library">
       <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h3v16H4zM10 4h3v16h-3zM16.5 4.5l3 .5-2.5 15-3-.5z"/></svg></span>
-      <span data-i18n="tab_library">书库</span></button>
+      <span data-i18n="tab_library">书架</span></button>
     <button class="tab" data-view="feynman">
       <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.5 8.5 0 01-8.5 8.5 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8A8.5 8.5 0 0112.5 3a8.5 8.5 0 018.5 8.5z"/><path d="M8.5 10h8"/><path d="M8.5 13.5h5"/></svg></span>
       <span data-i18n="tab_feynman">费曼考核</span></button>
@@ -590,9 +599,6 @@
     <button class="tab" data-view="questions">
       <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.4 9.4a2.6 2.6 0 115.2.5c0 1.7-2.5 2.1-2.5 3.5"/><line x1="12.1" y1="16.8" x2="12.1" y2="16.81"/></svg></span>
       <span data-i18n="tab_questions">问题</span></button>
-    <button class="tab" data-view="me">
-      <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c1.3-3.2 4-4.8 7-4.8s5.7 1.6 7 4.8"/></svg></span>
-      <span data-i18n="tab_me">我的</span></button>
     <button class="tab hide" data-view="vault" id="tabVault">
       <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="10.5" width="14" height="9.5" rx="1.5"/><path d="M8.5 10.5V7.5a3.5 3.5 0 017 0v3"/></svg></span>
       <span data-i18n="tab_vault">暗格</span></button>
@@ -630,13 +636,35 @@
   </header>
 
   <main>
-    <!-- 最近阅读 -->
-    <section id="view-recent" class="hide">
-      <div class="shelf">
-        <p class="shelf-title" data-i18n="shelfTitle">最近阅读 · 书案陈编</p>
+    <!-- 书桌：复习调度 + 最近阅读 + 概念库 + AI老师 + 统计 -->
+    <section id="view-desk" class="hide">
+      <div class="desk-review" id="deskReview">
+        <div class="dr-txt"><b data-i18n="reviewToday">今日复习</b>
+          <span id="reviewDueTxt">—</span></div>
+        <button class="btn primary" id="reviewStart" data-i18n="reviewStart">开始复习</button>
+      </div>
+      <div class="desk-sec" id="deskRecentSec">
+        <h3 class="sect-title" data-i18n="shelfTitle">最近阅读 · 书案陈编</h3>
         <div class="recent-grid" id="recentGrid"></div>
         <div id="recentEmpty" class="empty hide"></div>
       </div>
+      <div class="stat-cards">
+        <div class="stat"><div class="v" id="myToday">—</div><div class="l" data-i18n="statToday">今日阅读时长</div></div>
+        <div class="stat"><div class="v" id="myTotal">—</div><div class="l" data-i18n="statTotal">累计阅读时长</div></div>
+        <div class="stat"><div class="v" id="myFinished">—</div><div class="l" data-i18n="statFinished">已读完</div></div>
+      </div>
+      <h3 class="sect-title" data-i18n="statsTitle">全部账户阅读统计（互相可见）</h3>
+      <table class="stats" id="statsTable"></table>
+      <p style="font-size:11.5px; color:var(--sub); margin:10px 4px;" data-i18n="meNote">
+        时长按阅读器页面可见时间累计（约每 15 秒上报一次）；“已读完”为阅读进度达到 98% 的书籍数量。</p>
+
+      <h3 class="sect-title" data-i18n="recoTitle">家人荐书</h3>
+      <div class="subtle-h" data-i18n="recoReceived">收到的推荐</div>
+      <div id="recoReceived"></div>
+      <div class="subtle-h" data-i18n="recoSent">我发出的</div>
+      <div id="recoSent"></div>
+      <p style="font-size:11.5px; color:var(--sub); margin:8px 2px;" data-i18n="recoTip">
+        在书库或最近阅读的书封上点「荐」即可把书推荐给家人。</p>
     </section>
 
     <!-- 费曼考核：把书讲给 AI 小白听 -->
@@ -733,27 +761,6 @@
       </div>
       <div id="notesList"></div>
       <div id="notesEmpty" class="empty hide"></div>
-    </section>
-
-    <!-- 我的 -->
-    <section id="view-me" class="hide">
-      <div class="stat-cards">
-        <div class="stat"><div class="v" id="myToday">—</div><div class="l" data-i18n="statToday">今日阅读时长</div></div>
-        <div class="stat"><div class="v" id="myTotal">—</div><div class="l" data-i18n="statTotal">累计阅读时长</div></div>
-        <div class="stat"><div class="v" id="myFinished">—</div><div class="l" data-i18n="statFinished">已读完</div></div>
-      </div>
-      <h3 class="sect-title" data-i18n="statsTitle">全部账户阅读统计（互相可见）</h3>
-      <table class="stats" id="statsTable"></table>
-      <p style="font-size:11.5px; color:var(--sub); margin:10px 4px;" data-i18n="meNote">
-        时长按阅读器页面可见时间累计（约每 15 秒上报一次）；“已读完”为阅读进度达到 98% 的书籍数量。</p>
-
-      <h3 class="sect-title" data-i18n="recoTitle">家人荐书</h3>
-      <div class="subtle-h" data-i18n="recoReceived">收到的推荐</div>
-      <div id="recoReceived"></div>
-      <div class="subtle-h" data-i18n="recoSent">我发出的</div>
-      <div id="recoSent"></div>
-      <p style="font-size:11.5px; color:var(--sub); margin:8px 2px;" data-i18n="recoTip">
-        在书库或最近阅读的书封上点「荐」即可把书推荐给家人。</p>
     </section>
 
     <!-- 暗格（仅管理员） -->
@@ -907,6 +914,28 @@
   </div>
 </div>
 
+<!-- 复习弹层（艾宾浩斯） -->
+<div id="reviewModal" class="overlay hide">
+  <div class="modal" style="max-width:560px;">
+    <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
+      <h3 data-i18n="reviewToday" style="margin:0;">今日复习</h3>
+      <span style="flex:1"></span>
+      <span class="subtle-h" id="rvProgress"></span>
+    </div>
+    <div id="rvCard">
+      <div class="rv-front serif" id="rvFront"></div>
+      <div class="rv-back hide" id="rvBack"></div>
+    </div>
+    <div class="row" style="margin-top:14px;">
+      <button class="btn" id="rvShow" data-i18n="reviewShow">显示答案</button>
+      <span style="flex:1"></span>
+      <button class="btn" id="rvForgot" data-i18n="rForgot" title="1">忘了</button>
+      <button class="btn" id="rvFuzzy" data-i18n="rFuzzy" title="2">模糊</button>
+      <button class="btn primary" id="rvGot" data-i18n="rGotIt" title="3">记得</button>
+    </div>
+  </div>
+</div>
+
 <!-- 全局云朵浮层：未解决的问题（可拖拽，永远置顶） -->
 <div id="qCloud" class="hide" title="">
   <svg class="cloud-svg" viewBox="0 0 96 68" aria-hidden="true">
@@ -935,7 +964,7 @@
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 let me = null;              // 当前用户 {id, username, is_admin}
-let curView = 'recent';
+let curView = 'desk';
 let curPath = new URLSearchParams(location.search).get('path') || '';
 
 /* ================= 语言（与阅读器共享 br-lang） ================= */
@@ -951,10 +980,10 @@ const STR_I = {
     toast_me: '再大的问题通过拆解，都能在书里找到些答案！',
     recShort: '荐', dlBook: '下载原文件到本机',
     switchedNight: '已切换夜读 · 乌木', switchedDay: '已切换日读 · 宣纸',
-    tab_recent: '最近阅读', tab_library: '书库', tab_notes: '笔记',
+    tab_recent: '最近阅读', tab_library: '书架', tab_notes: '笔记',
     tab_questions: '问题', tab_settings: '设置',
     tab_feynman: '费曼考核',
-    tab_me: '我的', tab_vault: '暗格',
+    tab_desk: '书桌', tab_vault: '暗格',
     view_questions: '问题', view_settings: '设置', view_feynman: '费曼考核',
     fyPickBook: '选择书籍', fyStart: '开始考核', fyStarting: '小白入场中…',
     fyNote: '选一本书，把书里的内容讲给 AI 扮演的「小白」听——它听不懂就会追问，追问打在哪里，你的理解漏洞就在哪里。结束后生成掌握度评估。',
@@ -1022,7 +1051,13 @@ const STR_I = {
     uploadHint: '支持 EPUB / PDF / CBZ / CBR（可多选），默认上传到书库根目录；内容重复会提示书库已有并跳过，同名不同内容自动加序号；上传后自动扫描入库。',
     uploading: '上传中', uploadDone: n => `✅ 成功上传 ${n} 本书，已开始扫描入库`,
     uploadFail: '上传失败：', netErr: '网络错误',
-    view_recent: '最近阅读', view_library: '书库', view_notes: '笔记', view_me: '我的', view_vault: '暗格',
+    view_recent: '最近阅读', view_library: '书架', view_notes: '笔记', view_me: '我的', view_vault: '暗格',
+    view_desk: '书桌',
+    reviewToday: '今日复习', reviewDue: n => `${n} 张待复习`, reviewStart: '开始复习',
+    reviewClear: m => `今日已清空，明日 ${m} 张`,
+    reviewShow: '显示答案', rForgot: '忘了', rFuzzy: '模糊', rGotIt: '记得',
+    reviewDone: n => `复习完成：今天 ${n} 张`,
+    reviewAdded: n => `已加入 ${n} 条复习`,
     searchPh: '搜索书名 / 作者…', rescan: '↻ 重新扫描',
     ready: '就绪', scanning: n => `扫描中… 待处理 ${n}`, booksN: n => `藏书 ${n} 种`,
     shelfTitle: '最近阅读 · 书案陈编',
@@ -1085,9 +1120,10 @@ const STR_I = {
     toast_me: 'Any big problem, once broken down, can find some of its answers in books!',
     recShort: 'Rec', dlBook: 'Download the original file',
     switchedNight: 'Night mode · ebony', switchedDay: 'Day mode · paper',
-    tab_recent: 'Recently read', tab_library: 'Library', tab_notes: 'Notes',
+    tab_recent: 'Recently read', tab_library: 'Shelf', tab_notes: 'Notes',
     tab_questions: 'Questions', tab_settings: 'Settings',
     tab_feynman: 'Feynman test',
+    tab_desk: 'Desk',
     tab_me: 'Me', tab_vault: 'Vault',
     view_questions: 'Questions', view_settings: 'Settings', view_feynman: 'Feynman test',
     fyPickBook: 'Book', fyStart: 'Start', fyStarting: 'Waking the novice…',
@@ -1156,7 +1192,13 @@ const STR_I = {
     uploadHint: 'EPUB / PDF / CBZ / CBR (multi-select); files go to the library root; identical content is skipped with an "already in library" notice, same-name-different-content gets a (n) suffix; scanning starts automatically.',
     uploading: 'Uploading', uploadDone: n => `✅ Uploaded ${n} book(s), scanning started`,
     uploadFail: 'Upload failed: ', netErr: 'Network error',
-    view_recent: 'Recently read', view_library: 'Library', view_notes: 'Notes', view_me: 'Me', view_vault: 'Vault',
+    view_recent: 'Recently read', view_library: 'Shelf', view_notes: 'Notes', view_me: 'Me', view_vault: 'Vault',
+    view_desk: 'Desk',
+    reviewToday: 'Today’s review', reviewDue: n => `${n} card(s) due`, reviewStart: 'Start review',
+    reviewClear: m => `All clear — ${m} tomorrow`,
+    reviewShow: 'Show answer', rForgot: 'Forgot', rFuzzy: 'Fuzzy', rGotIt: 'Got it',
+    reviewDone: n => `Review done: ${n} card(s) today`,
+    reviewAdded: n => `${n} item(s) added to review`,
     searchPh: 'Search title / author…', rescan: '↻ Rescan',
     ready: 'Ready', scanning: n => `Scanning… ${n} pending`, booksN: n => `${n} books`,
     shelfTitle: 'Recently read · on the desk',
@@ -1322,13 +1364,13 @@ function esc(s) {
 
 
 /* ================= 视图切换 ================= */
+const VIEWS = ['desk', 'library', 'feynman', 'speed', 'notes', 'questions', 'vault', 'settings'];
 function switchView(view, push = true) {
   curView = view;
   $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.view === view));
-  $('#view-recent').classList.toggle('hide', view !== 'recent');
+  $('#view-desk').classList.toggle('hide', view !== 'desk');
   $('#view-library').classList.toggle('hide', view !== 'library');
   $('#view-notes').classList.toggle('hide', view !== 'notes');
-  $('#view-me').classList.toggle('hide', view !== 'me');
   $('#view-vault').classList.toggle('hide', view !== 'vault');
   $('#view-questions').classList.toggle('hide', view !== 'questions');
   $('#view-settings').classList.toggle('hide', view !== 'settings');
@@ -1338,10 +1380,9 @@ function switchView(view, push = true) {
   $('#rescanBtn').classList.toggle('hide', view !== 'library');
   $('#pageTitle').textContent = t('view_' + view);
   if (push) history.pushState({ view }, '', '/?view=' + view);
-  if (view === 'recent') loadRecent();
+  if (view === 'desk') loadDesk();
   if (view === 'library') load(curPath, false);
   if (view === 'notes') loadNotes();
-  if (view === 'me') loadMe();
   if (view === 'vault') loadVault();
   if (view === 'questions') loadQuestions();
   if (view === 'settings') loadSettings();
@@ -1350,14 +1391,91 @@ function switchView(view, push = true) {
 }
 $$('.tab').forEach(tb => tb.onclick = () => {
   switchView(tb.dataset.view);
-  // 进页提示语（书库 / 笔记 / 我的）
-  const k = { library: 'toast_library', notes: 'toast_notes', me: 'toast_me' }[tb.dataset.view];
+  // 进页提示语（书架 / 笔记）
+  const k = { library: 'toast_library', notes: 'toast_notes' }[tb.dataset.view];
   if (k) toast(t(k), 2800);
 });
 window.addEventListener('popstate', e => {
-  const v = (e.state && e.state.view) || new URLSearchParams(location.search).get('view') || 'recent';
-  switchView(['recent', 'feynman', 'speed', 'library', 'notes', 'questions', 'me', 'vault', 'settings'].includes(v) ? v : 'recent', false);
+  let v = (e.state && e.state.view) || new URLSearchParams(location.search).get('view') || 'desk';
+  if (v === 'recent' || v === 'me') v = 'desk';   // 旧链接兼容
+  switchView(VIEWS.includes(v) ? v : 'desk', false);
 });
+
+/* ================= 书桌 ================= */
+async function loadDesk() {
+  loadRecent();
+  loadReviewSummary();
+  loadMe();
+}
+async function loadReviewSummary() {
+  const box = $('#reviewDueTxt'), btn = $('#reviewStart');
+  if (!me) {
+    box.textContent = t('loginFirst'); btn.disabled = true; return;
+  }
+  btn.disabled = false;
+  try {
+    const s = await api('/api/review/summary');
+    if (s.due > 0) {
+      box.textContent = t('reviewDue')(s.due);
+      btn.textContent = t('reviewStart'); btn.disabled = false;
+    } else {
+      box.textContent = t('reviewClear')(s.tomorrow);
+      btn.textContent = t('reviewStart'); btn.disabled = true;
+    }
+  } catch (e) { if (e.message !== 'unauthorized') box.textContent = '—'; }
+}
+let rvQueue = [], rvIdx = 0, rvTotal = 0;
+$('#reviewStart').onclick = startReview;
+async function startReview() {
+  try {
+    const d = await api('/api/review/due?limit=50');
+    rvQueue = d.items; rvIdx = 0; rvTotal = rvQueue.length;
+    if (!rvTotal) { loadReviewSummary(); return; }
+    showRvCard();
+    $('#reviewModal').classList.remove('hide');
+  } catch (e) { toast(e.message); }
+}
+function showRvCard() {
+  const it = rvQueue[rvIdx];
+  $('#rvProgress').textContent = (rvIdx + 1) + ' / ' + rvTotal;
+  $('#rvFront').textContent = it.front;
+  const src = it.book_title ? '《' + it.book_title + '》 · ' : '';
+  $('#rvBack').textContent = src + (it.back || '');
+  $('#rvBack').classList.add('hide');
+  $('#rvShow').classList.remove('hide');
+  $('#rvForgot').disabled = $('#rvFuzzy').disabled = $('#rvGot').disabled = true;
+}
+$('#rvShow').onclick = () => {
+  $('#rvBack').classList.remove('hide');
+  $('#rvShow').classList.add('hide');
+  $('#rvForgot').disabled = $('#rvFuzzy').disabled = $('#rvGot').disabled = false;
+};
+async function rvGrade(g) {
+  const it = rvQueue[rvIdx];
+  try { await api(`/api/review/${it.id}/grade`, { method: 'POST', body: JSON.stringify({ grade: g }) }); }
+  catch (e) { toast(e.message); }
+  rvIdx++;
+  if (rvIdx >= rvTotal) {
+    $('#reviewModal').classList.add('hide');
+    toast(t('reviewDone')(rvTotal), 2500);
+    loadReviewSummary();
+    return;
+  }
+  showRvCard();
+}
+$('#rvForgot').onclick = () => rvGrade(0);
+$('#rvFuzzy').onclick = () => rvGrade(1);
+$('#rvGot').onclick = () => rvGrade(2);
+document.addEventListener('keydown', e => {
+  if ($('#reviewModal').classList.contains('hide')) return;
+  if (e.key === 'Escape') { $('#reviewModal').classList.add('hide'); return; }
+  if (!$('#rvBack').classList.contains('hide')) {
+    if (e.key === '1') rvGrade(0);
+    if (e.key === '2') rvGrade(1);
+    if (e.key === '3') rvGrade(2);
+  } else if (e.key === ' ') { e.preventDefault(); $('#rvShow').onclick(); }
+});
+$('#reviewModal').onclick = e => { if (e.target.id === 'reviewModal') $('#reviewModal').classList.add('hide'); };
 
 /* ================= 局域网节点卡 ================= */
 async function loadNode() {
@@ -1736,18 +1854,17 @@ $('#recoOk').onclick = async () => {
       body: JSON.stringify({ book_id: recoBook.id, message: $('#recoMsg').value.trim(), to_users: ids }) });
     $('#recoModal').classList.add('hide');
     toast(t('recoOk')(ids.length));
-    if (curView === 'me') loadMe();
+    if (curView === 'desk') loadDesk();
   } catch (e) { if (e.message !== 'unauthorized') $('#recoErr').textContent = e.message; }
 };
 $('#recoMsg').onkeydown = e => { if (e.key === 'Enter') $('#recoOk').onclick(); };
 
-/* ================= 个人中心 / 暗格 ================= */
+/* ================= 书桌 / 个人统计 ================= */
 async function loadMe() {
   if (!me) {
     $('#myToday').textContent = $('#myTotal').textContent = $('#myFinished').textContent = '—';
     $('#statsTable').innerHTML = '';
     $('#recoReceived').innerHTML = $('#recoSent').innerHTML = '';
-    toast('登录后可查看阅读统计', 1800);
     return;
   }
   try {
@@ -2263,7 +2380,7 @@ $('#fyFinishBtn').onclick = async () => {
     fyTypingHide();
     Object.assign(fyCur, { status: 'done', score: d.score, verdict: d.verdict, weak: d.weak });
     renderFeynmanChat(); renderFeynmanSessions();
-    toast(t('fyDone'));
+    toast(t('fyDone') + (d.review_added ? ' · ' + t('reviewAdded')(d.review_added) : ''), 3600);
   } catch (e) {
     fyTypingHide();
     toast(t('fyFail') + e.message, 4200);
@@ -2796,8 +2913,9 @@ $('#rescanBtn').onclick = async () => {
   applyUser();
   if (me) loadNode();
   pollScan();
-  const v = new URLSearchParams(location.search).get('view') || 'recent';
-  switchView(['recent', 'feynman', 'speed', 'library', 'notes', 'questions', 'me', 'vault', 'settings'].includes(v) ? v : 'recent', false);
+  let v = new URLSearchParams(location.search).get('view') || 'desk';
+  if (v === 'recent' || v === 'me') v = 'desk';   // 旧链接兼容
+  switchView(VIEWS.includes(v) ? v : 'desk', false);
 })();
 </script>
 </body>

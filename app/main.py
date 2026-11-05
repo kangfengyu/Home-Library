@@ -720,7 +720,10 @@ async def api_feynman_finish(request: Request, sid: int):
         system=system, max_tokens=2000)
     score, verdict, weak = _parse_feynman_assessment(raw)
     database.finish_feynman_session(user["id"], sid, score, verdict, weak)
-    return {"ok": True, "score": score, "verdict": verdict, "weak": weak}
+    review_added = database.enqueue_weak_reviews(
+        user["id"], s["book_id"], s["book_title"] or "", weak) if weak else 0
+    return {"ok": True, "score": score, "verdict": verdict, "weak": weak,
+            "review_added": review_added}
 
 
 @app.delete("/api/feynman/sessions/{sid}")
@@ -728,6 +731,54 @@ def api_feynman_delete(request: Request, sid: int):
     user = _require_user(request)
     if not database.delete_feynman_session(user["id"], sid):
         raise HTTPException(status_code=404, detail="考核会话不存在")
+
+
+# ---------------------------------------------------------------- 复习调度（艾宾浩斯）
+
+
+@app.get("/api/review/summary")
+def api_review_summary(request: Request):
+    user = _require_user(request)
+    return database.review_summary(user["id"])
+
+
+@app.get("/api/review/due")
+def api_review_due(request: Request, limit: int = 50):
+    user = _require_user(request)
+    limit = max(1, min(100, limit))
+    return {"items": database.review_due_items(user["id"], limit)}
+
+
+@app.post("/api/review")
+def api_review_add(request: Request, front: str = Body(...), back: str = Body(""),
+                   book_id: int = Body(0)):
+    user = _require_user(request)
+    front = (front or "").strip()
+    if not front:
+        raise HTTPException(status_code=400, detail="复习内容不能为空")
+    rid = database.add_review_item(user["id"], front, (back or "").strip(), book_id or 0)
+    return {"id": rid}
+
+
+@app.post("/api/review/{rid}/grade")
+def api_review_grade(request: Request, rid: int, payload: dict = Body(...)):
+    user = _require_user(request)
+    try:
+        grade = int(payload.get("grade"))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="grade 需为 0/1/2")
+    out = database.grade_review_item(user["id"], rid, grade)
+    if out is None:
+        raise HTTPException(status_code=404, detail="复习卡不存在")
+    return out
+
+
+@app.delete("/api/review/{rid}")
+def api_review_delete(request: Request, rid: int):
+    user = _require_user(request)
+    if not database.delete_review_item(user["id"], rid):
+        raise HTTPException(status_code=404, detail="复习卡不存在")
+    return {"ok": True}
     return {"ok": True}
 
 

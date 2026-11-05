@@ -171,6 +171,63 @@ CREATE TABLE IF NOT EXISTS speed_chunks (
 CREATE TABLE IF NOT EXISTS speed_job_cancel (
     job_id INTEGER PRIMARY KEY
 );
+
+CREATE TABLE IF NOT EXISTS review_items (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL,
+    book_id    INTEGER NOT NULL,
+    kind       TEXT NOT NULL DEFAULT 'feynman',  -- feynman / concept / manual
+    front      TEXT NOT NULL,                    -- 复习问题（费曼weak条目原文 / 概念名）
+    back       TEXT DEFAULT '',                  -- 参考答案
+    stage      INTEGER NOT NULL DEFAULT 0,       -- 已连续"记得"次数（阶段索引）
+    due_at     REAL NOT NULL DEFAULT 0,          -- 下次到期时间戳（秒）
+    reps       INTEGER NOT NULL DEFAULT 0,       -- 总复习次数
+    lapses     INTEGER NOT NULL DEFAULT 0,       -- "忘了"次数
+    status     TEXT NOT NULL DEFAULT 'active',   -- active / done（毕业）
+    created_at REAL DEFAULT 0,
+    updated_at REAL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_review_user ON review_items(user_id, status, due_at);
+
+CREATE TABLE IF NOT EXISTS concepts (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL,
+    book_id    INTEGER NOT NULL,
+    name       TEXT NOT NULL,
+    why        TEXT DEFAULT '',
+    thesis     TEXT DEFAULT '',
+    job_id     INTEGER DEFAULT 0,
+    created_at REAL DEFAULT 0,
+    UNIQUE (user_id, book_id, name)
+);
+CREATE INDEX IF NOT EXISTS idx_concepts_user ON concepts(user_id, name);
+
+CREATE TABLE IF NOT EXISTS courses (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL,
+    title      TEXT NOT NULL,
+    goal       TEXT DEFAULT '',
+    plan       TEXT NOT NULL DEFAULT '',         -- JSON: {title?, intro, steps:[...]}
+    chat       TEXT DEFAULT '',                  -- JSON: [{role,content},...] 规划对话历史
+    step_now   INTEGER NOT NULL DEFAULT 0,
+    status     TEXT NOT NULL DEFAULT 'active',   -- active / done / archived
+    created_at REAL DEFAULT 0,
+    updated_at REAL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_courses_user ON courses(user_id, updated_at);
+
+CREATE TABLE IF NOT EXISTS tutor_qa (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL,
+    book_id    INTEGER NOT NULL,
+    anchor     TEXT DEFAULT '',      -- 与划线同构 JSON：{"type":"epub","cfi":..,"start":..} / {"type":"pdf","page":..,"rects":..}
+    chapter    TEXT DEFAULT '',
+    quote      TEXT DEFAULT '',      -- 选中文案（≤500 字入库）
+    question   TEXT DEFAULT '',
+    answer     TEXT DEFAULT '',      -- AI 回答（≤4000 字入库）
+    created_at REAL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_tutor_user ON tutor_qa(user_id, created_at);
 """
 
 
@@ -299,6 +356,10 @@ def delete_user(uid: int) -> None:
         "(SELECT id FROM recommendations WHERE from_user=?) OR to_user=?",
         "DELETE FROM recommendations WHERE from_user=?",
         "DELETE FROM questions WHERE user_id=?",
+        "DELETE FROM review_items WHERE user_id=?",
+        "DELETE FROM concepts WHERE user_id=?",
+        "DELETE FROM courses WHERE user_id=?",
+        "DELETE FROM tutor_qa WHERE user_id=?",
         "DELETE FROM notes WHERE user_id=?",
         "DELETE FROM reading_stats WHERE user_id=?",
         "DELETE FROM progress WHERE user_id=?",
@@ -449,6 +510,114 @@ def delete_feynman_session(user_id: int, sid: int) -> bool:
         _check().execute("DELETE FROM feynman_messages WHERE session_id=?", (sid,))
         _check().execute("DELETE FROM feynman_sessions WHERE session_id=?", (sid,))
         _conn.commit()
+    return True
+
+
+# ---------------------------------------------------------------- 复习调度（艾宾浩斯）
+
+
+REVIEW_INTERVALS = [1, 2, 4, 7, 15, 30, 60]   # 天：stage-1 索引
+GRADE_FORGOT, GRADE_FUZZY, GRADE_GOT = 0, 1, 2
+
+
+def enqueue_weak_reviews(user_id: int, book_id: int, book_title: str, weak: list) -> int:
+    """费曼考核结束：把没讲明白的点入队（同 user+book+front 且 active 的跳过）。"""
+    now = time.time()
+    added = 0
+    with _lock:
+        for w in weak:
+            front = (w or "").strip()
+            if not front:
+                continue
+            dup = _check().execute(
+                "SELECT 1 FROM review_items WHERE user_id=? AND book_id=? AND front=? "
+                "AND status='active'", (user_id, book_id, front)).fetchone()
+            if dup:
+                continue
+            _check().execute(
+                "INSERT INTO review_items(user_id, book_id, kind, front, back, due_at, "
+                "created_at, updated_at) VALUES(?,?,?,?,?,?,?,?)",
+                (user_id, book_id, "feynman", front,
+                 f"《{book_title}》考核薄弱点 · {time.strftime('%m-%d', time.localtime(now))}",
+                 now, now, now))
+            added += 1
+        _conn.commit()
+    return added
+
+
+def add_review_item(user_id: int, front: str, back: str = "",
+                    book_id: int = 0, kind: str = "manual") -> int:
+    now = time.time()
+    with _lock:
+        cur = _check().execute(
+            "INSERT INTO review_items(user_id, book_id, kind, front, back, due_at, "
+            "created_at, updated_at) VALUES(?,?,?,?,?,?,?,?)",
+            (user_id, book_id or 0, kind, front, back or "", now, now, now))
+        _conn.commit()
+        return cur.lastrowid
+
+
+def review_due_items(user_id: int, limit: int = 50) -> list:
+    return query_all(
+        "SELECT r.*, b.title AS book_title FROM review_items r "
+        "LEFT JOIN books b ON b.id = r.book_id "
+        "WHERE r.user_id=? AND r.status='active' AND r.due_at<=? "
+        "ORDER BY r.due_at ASC LIMIT ?",
+        (user_id, time.time(), limit))
+
+
+def grade_review_item(user_id: int, rid: int, grade: int) -> Optional[dict]:
+    if grade not in (GRADE_FORGOT, GRADE_FUZZY, GRADE_GOT):
+        return None
+    row = query_one("SELECT * FROM review_items WHERE id=? AND user_id=?", (rid, user_id))
+    if row is None:
+        return None
+    now = time.time()
+    stage, status, due = row["stage"], row["status"], row["due_at"]
+    reps, lapses = row["reps"], row["lapses"]
+    if grade == GRADE_GOT:
+        stage += 1
+        if stage > len(REVIEW_INTERVALS):
+            status = "done"
+            due = now
+        else:
+            due = now + REVIEW_INTERVALS[stage - 1] * 86400
+    elif grade == GRADE_FUZZY:
+        due = now + 86400
+    else:                                     # 忘了：打回原点，10 分钟后再来
+        stage, due = 0, now + 600
+        lapses += 1
+    reps += 1
+    with _lock:
+        _check().execute(
+            "UPDATE review_items SET stage=?, due_at=?, reps=?, lapses=?, status=?, "
+            "updated_at=? WHERE id=?",
+            (stage, due, reps, lapses, status, now, rid))
+        _conn.commit()
+    return {"id": rid, "stage": stage, "status": status, "due_at": due}
+
+
+def review_summary(user_id: int) -> dict:
+    now = time.time()
+    day_end = now + 86400
+    due = query_one("SELECT COUNT(*) AS c FROM review_items WHERE user_id=? AND "
+                    "status='active' AND due_at<=?", (user_id, now))["c"]
+    tomorrow = query_one("SELECT COUNT(*) AS c FROM review_items WHERE user_id=? AND "
+                         "status='active' AND due_at>? AND due_at<=?",
+                         (user_id, now, day_end))["c"]
+    active = query_one("SELECT COUNT(*) AS c FROM review_items WHERE user_id=? AND "
+                       "status='active'", (user_id,))["c"]
+    done_today = query_one("SELECT COUNT(*) AS c FROM review_items WHERE user_id=? AND "
+                           "status='active' AND updated_at>=? AND reps>?",
+                           (user_id, now - 86400, 0))["c"]
+    return {"due": due, "tomorrow": tomorrow, "active": active, "today_done": done_today}
+
+
+def delete_review_item(user_id: int, rid: int) -> bool:
+    row = query_one("SELECT id FROM review_items WHERE id=? AND user_id=?", (rid, user_id))
+    if row is None:
+        return False
+    execute("DELETE FROM review_items WHERE id=?", (rid,))
     return True
 
 
