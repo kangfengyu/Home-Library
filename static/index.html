@@ -397,6 +397,7 @@
              margin-top:8px; padding-top:8px; line-height:1.7; }
   /* 书桌 · 概念库 */
   .concept-chips { display:flex; flex-wrap:wrap; gap:8px; margin:8px 0 10px; }
+  .desk-tip { font-size:12px; color:var(--sub); line-height:1.7; width:100%; }
   .chip { background:var(--panel2); border:1px solid var(--line); border-radius:999px;
           padding:4px 12px; font-size:12.5px; cursor:pointer; color:var(--txt); }
   .chip:hover { border-color:#C28E5C; }
@@ -429,17 +430,8 @@
   .tutor-card.open .tc-a { max-height:none; }
   .tutor-card .tc-a { cursor:pointer; }
   .tutor-card .tc-btns { margin-top:6px; display:flex; gap:6px; }
-  /* AI荐学 */
-  .learn-wrap { display:grid; grid-template-columns:220px 1fr; gap:16px; }
-  .learn-side { border-right:1px solid var(--line); padding-right:12px; }
-  .learn-main { min-height:60vh; display:flex; flex-direction:column; }
-  #lnChat { flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:10px;
-            padding-bottom:12px; }
-  .ln-msg { max-width:80%; padding:8px 12px; border-radius:10px; font-size:13px;
-            line-height:1.7; white-space:pre-wrap; word-break:break-word; }
-  .ln-user { align-self:flex-end; background:var(--panel2); border:1px solid var(--line); }
-  .ln-ai { align-self:flex-start; color:var(--sub); }
-  .ln-timeline { align-self:flex-start; width:100%; border:1px solid var(--line);
+  /* AI荐学（壳复用费曼 fy-*，这里只留课程时间线） */
+  .ln-timeline { border:1px solid var(--line);
                  border-radius:10px; background:var(--panel); padding:12px; }
   .ln-intro { font-size:12px; color:var(--sub); margin:0 0 10px; line-height:1.7; }
   .ln-step { display:flex; gap:10px; padding:8px 0; border-top:1px dashed var(--line); }
@@ -456,13 +448,6 @@
   .ls-out { font-size:11.5px; color:var(--sub); margin-top:3px; }
   .ls-btns { margin-top:6px; display:flex; gap:6px; }
   .chip.pending { color:#b8860b; border-color:#b8860b; cursor:default; }
-  .ln-input { display:flex; gap:8px; align-items:flex-end; border-top:1px solid var(--line);
-              padding-top:10px; }
-  .ln-input textarea { flex:1; resize:none; }
-  @media (max-width:760px) {
-    .learn-wrap { grid-template-columns:1fr; }
-    .learn-side { border-right:none; border-bottom:1px solid var(--line); padding:0 0 10px; }
-  }
   .fy-sessions { display:flex; flex-direction:column; gap:6px; max-height:430px; overflow-y:auto; }
   .fy-session { background:var(--panel); border:1px solid var(--line); border-radius:8px;
                 padding:9px 12px; cursor:pointer; font-size:12.5px; }
@@ -751,20 +736,35 @@
         在书库或最近阅读的书封上点「荐」即可把书推荐给家人。</p>
     </section>
 
-    <!-- AI荐学：学习规划 chat -->
+    <!-- AI荐学：学习规划 chat（同费曼布局） -->
     <section id="view-learn" class="hide">
-      <div class="learn-wrap">
-        <aside class="learn-side">
+      <div id="lnGate" class="empty hide"></div>
+      <div class="fy-wrap" id="lnWrap">
+        <aside class="fy-side">
+          <div class="fy-new">
+            <label><span data-i18n="lnGoalLabel">学习目标</span>
+              <textarea id="lnGoal" rows="3" data-i18n-ph="learnPh"
+                placeholder="我想学什么、解决什么问题、达到什么程度…"></textarea>
+            </label>
+            <button class="btn primary" id="lnSend" data-i18n="learnSend">生成课程</button>
+          </div>
+          <p class="fy-note" data-i18n="lnNote"></p>
           <div class="subtle-h" data-i18n="learnHistory">我的课程</div>
           <div class="fy-sessions" id="lnCourses"></div>
-          <button class="btn" id="lnNew" style="margin-top:10px;" data-i18n="learnNew">＋ 全新目标</button>
         </aside>
-        <div class="learn-main">
-          <div id="lnChat"></div>
-          <div class="ln-input">
-            <textarea id="lnGoal" rows="2" data-i18n-ph="learnPh"
-              placeholder="告诉我你想学什么、解决什么问题、达到什么程度…"></textarea>
-            <button class="btn primary" id="lnSend" data-i18n="learnSend">生成课程</button>
+        <div class="fy-main">
+          <div class="fy-head" id="lnHead" style="display:none;">
+            <span class="fy-avatar" id="lnAv">🎓</span>
+            <div><div class="fy-title" id="lnTitle"></div><div class="fy-sub" id="lnSub"></div></div>
+            <span style="flex:1"></span>
+            <button class="btn mini" id="lnNew" data-i18n="learnNew">＋ 全新目标</button>
+          </div>
+          <div class="fy-chat hide" id="lnChat"></div>
+          <div class="fy-empty" id="lnEmpty"></div>
+          <div class="fy-inputbar" id="lnInputbar" style="display:none;">
+            <textarea id="lnRefine" rows="2" data-i18n-ph="learnRefinePh"
+                      placeholder="想调整课程？直接说，比如：第 2 步换更基础的书…"></textarea>
+            <button class="btn primary" id="lnRefineBtn" data-i18n="learnRefineBtn">调整</button>
           </div>
         </div>
       </div>
@@ -1187,16 +1187,22 @@ const STR_I = {
     conceptTitle: '概念库', conceptAll: '查看全部',
     conceptInBooks: n => `出现在 ${n} 本书`,
     conceptToReview: '加入复习', conceptPh: '搜索概念…',
+    conceptGuide: '速读完一本书后，书里的核心概念会自动沉淀到这里。',
     tab_learn: 'AI荐学', view_learn: 'AI荐学', learnHistory: '我的课程',
     myCourses: '我的课程', courseStep: (a, b) => `第 ${a}/${b} 步`,
     courseNext: '下一本', courseGo: '继续学习',
     learnPh: '告诉我你想学什么、解决什么问题、达到什么程度…',
+    lnGoalLabel: '学习目标',
+    lnNote: '书架没有的书也会推荐；获取后上传同名书籍，课程会自动接上。',
+    learnRefinePh: '想怎么调整？比如：更入门一点 / 加一本练习册 / 去掉某本…',
+    learnRefineBtn: '调整',
     learnSend: '生成课程', learnNew: '＋ 全新目标',
     learnIntroNoCourse: '输入学习目标，AI 会基于你的书架规划一门循序渐进的课程（书架没有的书也会推荐，上传后自动接上）',
     learnRefining: '正在规划…',
     stepPending: '待入库', stepLink: '关联此书', stepLinked: '已关联',
     stepOutcome: '读完你会',
     tutorTitle: 'AI老师', tutorJump: '回到原文',
+    tutorGuide: '阅读时选中一段文字，点『问AI老师』，问答会收录到这里。',
     searchPh: '搜索书名 / 作者…', rescan: '↻ 重新扫描',
     ready: '就绪', scanning: n => `扫描中… 待处理 ${n}`, booksN: n => `藏书 ${n} 种`,
     shelfTitle: '最近阅读 · 书案陈编',
@@ -1341,16 +1347,22 @@ const STR_I = {
     conceptTitle: 'Concepts', conceptAll: 'View all',
     conceptInBooks: n => `in ${n} book(s)`,
     conceptToReview: 'To review', conceptPh: 'Search concepts…',
+    conceptGuide: 'After a speed-read finishes, the core concepts of the book settle here automatically.',
     tab_learn: 'AI Learn', view_learn: 'AI Learn', learnHistory: 'My courses',
     myCourses: 'My courses', courseStep: (a, b) => `Step ${a}/${b}`,
     courseNext: 'Next book', courseGo: 'Continue',
     learnPh: 'Tell me what you want to learn, solve, or achieve…',
+    lnGoalLabel: 'Learning goal',
+    lnNote: 'Books not on your shelf may also be recommended — upload a book with the same title and the course links up automatically.',
+    learnRefinePh: 'How to adjust? e.g. make it more beginner-friendly / add a workbook / drop a book…',
+    learnRefineBtn: 'Adjust',
     learnSend: 'Plan course', learnNew: '＋ New goal',
     learnIntroNoCourse: 'Enter a learning goal — AI plans a course from your shelf (books not on the shelf are also recommended and link up automatically once uploaded)',
     learnRefining: 'Planning…',
     stepPending: 'To add', stepLink: 'Link book', stepLinked: 'Linked',
     stepOutcome: 'After reading you will',
     tutorTitle: 'AI tutor', tutorJump: 'Back to text',
+    tutorGuide: 'Select some text while reading and tap "Ask AI tutor" — Q&A pairs are collected here.',
     searchPh: 'Search title / author…', rescan: '↻ Rescan',
     ready: 'Ready', scanning: n => `Scanning… ${n} pending`, booksN: n => `${n} books`,
     shelfTitle: 'Recently read · on the desk',
@@ -1569,10 +1581,13 @@ async function loadDesk() {
 async function loadDeskTutor() {
   const sec = $('#deskTutorSec'), box = $('#deskTutor');
   if (!me) { sec.classList.add('hide'); return; }
+  sec.classList.remove('hide');
   try {
     const d = await api('/api/tutor/list?limit=10');
-    if (!d.items.length) { sec.classList.add('hide'); return; }
-    sec.classList.remove('hide');
+    if (!d.items.length) {
+      box.innerHTML = '<div class="desk-tip">' + t('tutorGuide') + '</div>';
+      return;
+    }
     box.innerHTML = '';
     d.items.forEach(it => {
       const div = document.createElement('div');
@@ -1640,56 +1655,95 @@ function renderCourseCard(c, box) {
   box.appendChild(div);
 }
 
-/* ================= AI荐学 ================= */
-let lnCur = null;             // 当前课程 {id, plan, chat, step_now}
+/* ================= AI荐学（费曼同款壳） ================= */
+let lnCur = null;             // 当前课程
 async function loadLearn() {
-  if (!me) { $('#lnChat').innerHTML = '<div class="empty">' + t('spNeedLogin') + '</div>'; renderLnCourses(); return; }
+  const gate = $('#lnGate'), wrap = $('#lnWrap');
+  if (!me) {
+    gate.innerHTML = t('spNeedLogin') + '<br><button class="btn primary" onclick="openLogin()">' + t('signIn') + '</button>';
+    gate.classList.remove('hide'); wrap.classList.add('hide'); return;
+  }
+  gate.classList.add('hide'); wrap.classList.remove('hide');
   renderLnCourses();
-  if (!lnCur) $('#lnChat').innerHTML = '<div class="empty">' + t('learnIntroNoCourse') + '</div>';
-  else renderLnChat();
+  if (!lnCur) {
+    $('#lnHead').style.display = 'none';
+    $('#lnChat').classList.add('hide');
+    $('#lnInputbar').style.display = 'none';
+    const e = $('#lnEmpty');
+    e.classList.remove('hide');
+    e.innerHTML = t('learnIntroNoCourse');
+  } else renderLnChat();
 }
 async function renderLnCourses() {
   const box = $('#lnCourses');
-  if (!me) { box.innerHTML = ''; return; }
+  box.innerHTML = '';
   try {
     const d = await api('/api/learn/courses');
-    box.innerHTML = '';
     d.courses.forEach(c => {
       const el = document.createElement('div');
       el.className = 'fy-session' + (lnCur && lnCur.id === c.id ? ' active' : '');
       el.innerHTML = `<div class="fs-title">${esc(c.title)}</div>
         <div class="fs-meta"><span>${t('courseStep')(Math.min(c.step_now + 1, (c.plan?.steps || []).length), (c.plan?.steps || []).length)}</span>
-        <button class="fs-del" title="删除" style="margin-left:auto;border:none;background:none;cursor:pointer;color:var(--sub);">✕</button></div>`;
+        <span class="fs-del" title="${t('qDelete')}">✕</span></div>`;
       el.onclick = () => { lnCur = c; renderLnChat(); renderLnCourses(); };
       el.querySelector('.fs-del').onclick = async e => {
         e.stopPropagation();
         if (!confirm(t('fyDelConfirm'))) return;
         try {
           await api('/api/learn/courses/' + c.id, { method: 'DELETE' });
-          if (lnCur && lnCur.id === c.id) lnCur = null;
+          if (lnCur && lnCur.id === c.id) { lnCur = null; loadLearn(); }
           renderLnCourses(); loadDeskCourses();
-          if (!lnCur) $('#lnChat').innerHTML = '<div class="empty">' + t('learnIntroNoCourse') + '</div>';
         } catch (err) { toast(err.message); }
       };
       box.appendChild(el);
     });
   } catch (e) { if (e.message !== 'unauthorized') toast(e.message); }
 }
+function lnAddMsg(role, text, withTimeline) {
+  const chat = $('#lnChat');
+  if (text) {
+    const row = document.createElement('div');
+    row.className = 'fy-row ' + (role === 'user' ? 'me' : 'ai');
+    const bub = document.createElement('div');
+    bub.className = 'fy-bubble';
+    bub.style.whiteSpace = 'pre-wrap';
+    bub.textContent = text;
+    row.appendChild(bub);
+    chat.appendChild(row);
+  }
+  if (withTimeline) chat.appendChild(lnTimelineRow());
+  chat.scrollTop = chat.scrollHeight;
+}
+function lnTimelineRow() {
+  const row = document.createElement('div');
+  row.className = 'fy-row ai';
+  const bub = document.createElement('div');
+  bub.className = 'fy-bubble';
+  bub.style.maxWidth = '100%';
+  bub.appendChild(renderTimeline(lnCur));
+  row.appendChild(bub);
+  return row;
+}
 function renderLnChat() {
-  const box = $('#lnChat');
-  box.innerHTML = '';
-  if (!lnCur) return;
-  const chat = lnCur.chat || [];
-  let hasAssistant = false;
-  chat.forEach(m => {
-    const d = document.createElement('div');
-    d.className = 'ln-msg ' + (m.role === 'user' ? 'ln-user' : 'ln-ai');
-    d.textContent = m.content;
-    box.appendChild(d);
-    if (m.role === 'assistant') { hasAssistant = true; box.appendChild(renderTimeline(lnCur)); }
+  const c = lnCur;
+  $('#lnHead').style.display = '';
+  $('#lnChat').classList.remove('hide');
+  $('#lnEmpty').classList.add('hide');
+  $('#lnInputbar').style.display = '';
+  const steps = (c.plan?.steps || []);
+  $('#lnTitle').textContent = c.title;
+  $('#lnSub').textContent = t('courseStep')(Math.min(c.step_now + 1, steps.length), steps.length) +
+    ' · ' + (c.goal || '').slice(0, 30);
+  const chat = $('#lnChat');
+  chat.innerHTML = '';
+  const chatLog = c.chat || [];
+  let first = true;
+  chatLog.forEach(m => {
+    lnAddMsg(m.role, m.content, false);
+    if (m.role === 'assistant' && first) { chat.appendChild(lnTimelineRow()); first = false; }
   });
-  if (!hasAssistant && (lnCur.plan?.steps || []).length) box.appendChild(renderTimeline(lnCur));
-  box.scrollTop = 0;
+  if (first) chat.appendChild(lnTimelineRow());
+  chat.scrollTop = 0;
 }
 function renderTimeline(c) {
   const plan = c.plan || {}, steps = plan.steps || [];
@@ -1724,36 +1778,45 @@ function renderTimeline(c) {
   });
   return tl;
 }
-$('#lnNew').onclick = () => { lnCur = null; renderLnCourses();
-  $('#lnChat').innerHTML = '<div class="empty">' + t('learnIntroNoCourse') + '</div>'; };
+$('#lnNew').onclick = () => { lnCur = null; loadLearn(); $('#lnGoal').focus(); };
 $('#lnGoal').onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('#lnSend').onclick(); } };
 $('#lnSend').onclick = async () => {
-  if (!me) { openLogin(); return; }
   const goal = $('#lnGoal').value.trim();
   if (!goal) return;
   const btn = $('#lnSend');
   btn.disabled = true; btn.textContent = t('learnRefining');
   try {
-    let d;
-    if (lnCur) {
-      d = await api('/api/learn/plan/' + lnCur.id + '/refine', { method: 'POST',
-        body: JSON.stringify({ goal }) });
-    } else {
-      d = await api('/api/learn/plan', { method: 'POST', body: JSON.stringify({ goal }) });
-    }
-    lnCur = { id: d.id, plan: d.plan, chat: [{ role: 'user', content: goal },
-      { role: 'assistant', content: d.plan.title + '：' + d.plan.intro }], step_now: 0 };
+    const d = await api('/api/learn/plan', { method: 'POST', body: JSON.stringify({ goal }) });
+    const d2 = await api('/api/learn/courses');
+    lnCur = d2.courses.find(x => x.id === d.id) || lnCur;
     $('#lnGoal').value = '';
     renderLnChat(); renderLnCourses(); loadDeskCourses();
   } catch (e) { toast(e.message, 4200); }
   finally { btn.disabled = false; btn.textContent = t('learnSend'); }
+};
+$('#lnRefine').onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('#lnRefineBtn').onclick(); } };
+$('#lnRefineBtn').onclick = async () => {
+  if (!lnCur) return;
+  const goal = $('#lnRefine').value.trim();
+  if (!goal) return;
+  const btn = $('#lnRefineBtn');
+  btn.disabled = true; btn.textContent = t('learnRefining');
+  try {
+    await api('/api/learn/plan/' + lnCur.id + '/refine', { method: 'POST',
+      body: JSON.stringify({ goal }) });
+    const d = await api('/api/learn/courses');
+    lnCur = d.courses.find(x => x.id === lnCur.id) || lnCur;
+    $('#lnRefine').value = '';
+    renderLnChat(); renderLnCourses(); loadDeskCourses();
+  } catch (e) { toast(e.message, 4200); }
+  finally { btn.disabled = false; btn.textContent = t('learnRefineBtn'); }
 };
 /* 关联外部书：小选书弹层 */
 let linkTarget = null;
 function openLinkPicker(cid, idx) {
   linkTarget = { cid, idx };
   $('#linkModal').classList.remove('hide');
-  if (!$('#linkQ').value) lnLinkLoad();
+  lnLinkLoad();
 }
 let linkTimer = null;
 $('#linkQ').oninput = () => { clearTimeout(linkTimer); linkTimer = setTimeout(lnLinkLoad, 300); };
@@ -1792,12 +1855,17 @@ let conceptGroups = [];
 async function loadConcepts() {
   const sec = $('#deskConceptSec'), chips = $('#conceptChips');
   if (!me) { sec.classList.add('hide'); return; }
+  sec.classList.remove('hide');
   try {
     const d = await api('/api/concepts?grouped=1');
     conceptGroups = d.concepts;
-    if (!conceptGroups.length) { sec.classList.add('hide'); return; }
-    sec.classList.remove('hide');
     chips.innerHTML = '';
+    if (!conceptGroups.length) {
+      chips.innerHTML = '<div class="desk-tip">' + t('conceptGuide') + '</div>';
+      $('#conceptAll').style.display = 'none';
+      return;
+    }
+    $('#conceptAll').style.display = '';
     conceptGroups.slice(0, 8).forEach(g => {
       const s = document.createElement('span');
       s.className = 'chip';

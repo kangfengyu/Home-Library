@@ -255,9 +255,6 @@ const bookId = params.get('id');
 const noteAnchor = params.get('note');      // 从笔记页跳转
 let book = null, me = null;
 let notes = [];                              // 当前书划线（含 thoughts）
-let curChapter = '';                         // AI老师：当前 EPUB 章节名
-let curPdfPage = 0;                          // AI老师：当前 PDF 页码
-const tocLabels = {};                        // AI老师：spine href → 章节名
 
 /* ---------- 语言（与首页共享 br-lang） ---------- */
 let LANG = 'zh';
@@ -588,7 +585,6 @@ function hideHlTip() { $('#hlTip').classList.add('hide'); }
 let pendingSel = null;   // { kind:'epub', cfi, text } | { kind:'pdf', page, rects, text }
 function showSelBar(p) {
   pendingSel = p;
-  if (p.kind === 'pdf') curPdfPage = p.page || curPdfPage;
   $('#selBar .txt').textContent = '“' + p.text.slice(0, 120) + (p.text.length > 120 ? '…' : '') + '”';
   $('#selThought').classList.add('hide'); $('#selThought').value = '';
   $('#selSave').textContent = t('selOnly');
@@ -624,23 +620,23 @@ async function doAsk(question) {
   const p = pendingSel, btn = $('#selAsk');
   const anchor = p.kind === 'epub' ? JSON.stringify({ type: 'epub', cfi: p.cfi, start: epubPointCfi(p.cfi) })
                                    : JSON.stringify({ type: 'pdf', page: p.page, rects: p.rects });
-  const chapter = p.kind === 'epub' ? (curChapter || '') : `第 ${(p.page || curPdfPage || 1)} 页`;
   btn.disabled = true; btn.textContent = t('aiThinking');
   try {
     const r = await fetch('/api/tutor/ask', {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ book_id: bookId, anchor, chapter, quote: p.text, question })
+      body: JSON.stringify({ book_id: bookId, anchor, quote: p.text, question })
     });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(d.detail || ('HTTP ' + r.status));
-    showTutor(chapter, p.text, question, d.answer);
+    showTutor(p.text, question, d.answer);
     toast(t('tutorSaved'), 2600);
     hideSelBar(); clearSelection();
   } catch (e) { toast(e.message, 4200); }
   finally { btn.disabled = false; btn.textContent = t('selAsk'); }
 }
-function showTutor(chapter, quote, question, answer) {
-  $('#tpSrc').textContent = ((book && book.title) ? '《' + book.title + '》' : '') + ' · ' + (chapter || '');
+function showTutor(quote, question, answer) {
+  $('#tpSrc').textContent = ((book && book.title) ? '《' + book.title + '》' : '') +
+    ((book && book.author) ? ' · ' + book.author : '');
   $('#tpQuote').textContent = '“' + quote.slice(0, 120) + (quote.length > 120 ? '…' : '') + '”';
   $('#tpQ').textContent = question || '';
   $('#tpQ').style.display = question ? '' : 'none';
@@ -924,7 +920,6 @@ async function initEpub() {
       if (!s) return;
       const total = epub.spine ? epub.spine.length : 0;
       lastCfi = s.cfi;
-      if (s.href) curChapter = tocLabels[(s.href || '').split('#')[0]] || curChapter;
       window._lastCfi = s.cfi;   // 调试钩子：可从控制台核对切章基准
       setPos(total ? `${(s.index || 0) + 1} / ${total} 章` : '');
       const pct = total ? (s.index + 1) / total : 0;
@@ -1187,8 +1182,6 @@ async function initEpub() {
         a.textContent = '　'.repeat(depth) + label;
         a.onclick = () => { rendition.display(it.href); $('#toc').classList.remove('open'); };
         list.appendChild(a);
-        const base = (it.href || '').split('#')[0];
-        if (base && !tocLabels[base]) tocLabels[base] = label;   // AI老师：href → 章节名
         if (it.subitems && it.subitems.length) walk(it.subitems, depth + 1);
       });
     };

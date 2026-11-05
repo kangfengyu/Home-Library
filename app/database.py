@@ -646,6 +646,30 @@ def upsert_concepts(user_id: int, book_id: int, job_id: int,
     return added
 
 
+def backfill_concepts(user_id: int) -> int:
+    """旧速读报告概念回填：扫该用户全部 done 的 speed_jobs，把 result.concepts
+    补进 concepts 表（INSERT OR IGNORE 幂等，已有数据不受影响）。返回新增条数。"""
+    total = 0
+    for job in query_all(
+        "SELECT id, book_id, result FROM speed_jobs "
+        "WHERE user_id=? AND status='done' ORDER BY updated_at", (user_id,)
+    ):
+        try:
+            data = json.loads(job["result"] or "{}")
+        except Exception:
+            continue
+        concepts = data.get("concepts")
+        if not concepts:
+            continue
+        try:
+            total += upsert_concepts(
+                user_id, job["book_id"] or 0, job["id"], concepts,
+                thesis=data.get("thesis") or "")
+        except Exception:
+            continue
+    return total
+
+
 def list_concepts(user_id: int, book_id: Optional[int] = None) -> list:
     sql = ("SELECT c.*, b.title AS book_title FROM concepts c "
            "LEFT JOIN books b ON b.id = c.book_id WHERE c.user_id=?")

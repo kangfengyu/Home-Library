@@ -787,6 +787,10 @@ def api_review_delete(request: Request, rid: int):
 @app.get("/api/concepts")
 def api_concepts(request: Request, book_id: int = 0, grouped: int = 0):
     user = _require_user(request)
+    try:        # 旧速读报告的概念回填（幂等；无 speed_jobs 时零成本）
+        database.backfill_concepts(user["id"])
+    except Exception:
+        log.exception("概念回填失败（忽略）")
     rows = database.list_concepts(user["id"], book_id or None)
     if not grouped:
         return {"concepts": [dict(r) for r in rows]}
@@ -999,7 +1003,7 @@ def api_learn_delete(request: Request, cid: int):
 
 _TUTOR_SYSTEM = (
     "你是一位博学、直接的私人读书导师。读者正在读《{title}》{author_part}，"
-    "读到「{chapter}」时选中了一段文字并向你提问。\n"
+    "选中了书中的一段文字并向你提问。\n"
     "规则：1) 优先结合本书语境与这段原文作答；2) 可补充必要背景知识，但不要跑题；"
     "3) 不确定就明说，不要编造；4) 直接给答案，不要客套开头结尾；5) 少而精，300字内，可用短列表。"
 )
@@ -1011,7 +1015,6 @@ async def api_tutor_ask(request: Request, payload: dict = Body(...)):
     book_id = int(payload.get("book_id") or 0)
     quote = (payload.get("quote") or "").strip()
     question = (payload.get("question") or "").strip()
-    chapter = (payload.get("chapter") or "").strip()
     anchor = (payload.get("anchor") or "").strip()
     book = database.get_book(book_id)
     if book is None:
@@ -1019,8 +1022,7 @@ async def api_tutor_ask(request: Request, payload: dict = Body(...)):
     if not quote:
         raise HTTPException(status_code=400, detail="选中文案不能为空")
     system = _TUTOR_SYSTEM.format(
-        title=book["title"] or "", author_part=f"（{book['author']}）" if book["author"] else "",
-        chapter=chapter or "当前章节")
+        title=book["title"] or "", author_part=f"（{book['author']}）" if book["author"] else "")
     user_msg = (f"选中文本：“{quote[:500]}”\n\n读者的问题："
                 + (question if question else "请讲解这段：它在讲什么、为什么重要、"
                                             "有什么背景或容易误解的地方。"))
@@ -1029,7 +1031,7 @@ async def api_tutor_ask(request: Request, payload: dict = Body(...)):
                                   system=system, max_tokens=800, timeout=60)
     if not raw:
         raise HTTPException(status_code=502, detail="AI老师没有返回内容，请重试")
-    qid = database.add_tutor_qa(user["id"], book_id, anchor, chapter,
+    qid = database.add_tutor_qa(user["id"], book_id, anchor, "",
                                 quote, question, raw)
     return {"id": qid, "answer": raw}
 
@@ -1048,7 +1050,6 @@ def api_tutor_delete(request: Request, qid: int):
     user = _require_user(request)
     if not database.delete_tutor_qa(user["id"], qid):
         raise HTTPException(status_code=404, detail="问答不存在")
-    return {"ok": True}
     return {"ok": True}
 
 

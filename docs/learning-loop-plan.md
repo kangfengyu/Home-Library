@@ -88,7 +88,7 @@ CREATE TABLE IF NOT EXISTS tutor_qa (
     user_id    INTEGER NOT NULL,
     book_id    INTEGER NOT NULL,
     anchor     TEXT DEFAULT '',      -- 与划线同构 JSON：{"type":"epub","cfi":..,"start":..} / {"type":"pdf","page":..,"rects":..}
-    chapter    TEXT DEFAULT '',      -- EPUB=当前 TOC 章节标题 / PDF="第 N 页"
+    chapter    TEXT DEFAULT '',      -- 已停用（v2 起不再传章节，恒为空串，保留列兼容旧数据）
     quote      TEXT DEFAULT '',      -- 选中文案（≤500 字入库）
     question   TEXT DEFAULT '',      -- 用户问题（可空 = 请老师直接讲解这段）
     answer     TEXT DEFAULT '',      -- AI 回答（≤4000 字入库）
@@ -250,13 +250,13 @@ user = "学习目标：" + goal + "\n\n书房书单（含速读分析的章节�
 
 ## 五、AI老师（阅读中划线追问）
 
-> 阅读页划线时除了"仅划线 / 划线并记想法"，新增"问AI老师"：带着**书名+作者+当前章节+选中文案+问题**去问 LLM，问答自动收录进书桌。
+> 阅读页划线时除了"仅划线 / 划线并记想法"，新增"问AI老师"：带着**书名+作者+选中文案+问题**去问 LLM（不带章节——更快更稳），问答自动收录进书桌。
 
 ### 交互（static/reader.html，全部复用现有模式）
 1. `#selBar`（210-218 行）加第三个按钮 `#selAsk` "🧑‍🏫 问AI老师"。
 2. 复用 `#selThought` 的两段式交互（照 `#selSaveThought` 566-574 行模式）：首次点击 → textarea 显示、placeholder 改为"向AI老师提问…（留空 = 请老师讲解这段）"；再次点击/Enter → 发起提问。
 3. 发起后：按钮禁用 + 文案"AI老师思考中…"（LLM 调用同步等待，timeout 60s），成功/失败恢复。
-4. 回答展示：新增 `#tutorPanel` 覆盖层（居中卡片，样式随 toast/hlTip 体系）：`《书名》· 章节` 小标 + 引用原文（≤120 字摘录）+ 问题 + 回答（pre-wrap 保留换行），底部 [关闭]；Esc / 点遮罩关闭；toast 提示"已收录到书桌 · AI老师"。
+4. 回答展示：新增 `#tutorPanel` 覆盖层（居中卡片，样式随 toast/hlTip 体系）：`《书名》· 作者` 小标 + 引用原文（≤120 字摘录）+ 问题 + 回答（pre-wrap 保留换行），底部 [关闭]；Esc / 点遮罩关闭；toast 提示"已收录到书桌 · AI老师"。
 5. anchor 直接复用划线同构 JSON（`doCreateNote` 580-581 行拼法）；chapter 取当前 TOC 章节标题（EPUB）/ `第 N 页`（PDF）；quote 截 500 字。
 6. 未登录处理与划线一致（`doCreateNote` 里的 `me` 判断同款提示跳登录）。
 7. **不自动创建划线**：问过 ≠ 想划线；想划的用户先点"仅划线"再问（顺序自由）。
@@ -264,7 +264,7 @@ user = "学习目标：" + goal + "\n\n书房书单（含速读分析的章节�
 ### 后端（app/main.py 新增）
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| POST | `/api/tutor/ask` | body `{book_id, anchor, chapter, quote, question}`（quote 必填；question 可空）。调 LLM → 存 tutor_qa → `{id, answer}` |
+| POST | `/api/tutor/ask` | body `{book_id, anchor, quote, question}`（quote 必填；question 可空；anchor 仅供书桌"回到原文"）。调 LLM → 存 tutor_qa → `{id, answer}` |
 | GET | `/api/tutor/list?limit=30` | 最近问答（JOIN books 带 book_title，private 过滤同 notes），created_at DESC |
 | DELETE | `/api/tutor/{id}` | 删除一条问答（校验 user_id） |
 
