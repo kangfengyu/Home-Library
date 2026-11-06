@@ -323,6 +323,7 @@ const STR = {
     tocH3:'目录', del:'删除', page:'页',
     fontBtn:'字体', fontTitle:'切换正文字体',
     fontDef:'默认字体', fontSans:'黑体', fontSong:'宋体', fontKai:'楷体', fontWenkai:'霞鹜文楷',
+    lhBtn:'行距', lhTitle:'调整行距', lhTight:'紧凑', lhNormal:'标准', lhLoose:'宽松',
   },
   en: {
     toc:'Contents', tocTip:'Table of contents', prev:'Previous', next:'Next', fontDown:'Smaller text',
@@ -353,6 +354,7 @@ const STR = {
     tocH3:'Contents', del:'Delete', page:'Page',
     fontBtn:'Font', fontTitle:'Choose body font',
     fontDef:'Default', fontSans:'Sans', fontSong:'Serif (Song)', fontKai:'Kai (script)', fontWenkai:'LXGW WenKai',
+    lhBtn:'Spacing', lhTitle:'Line spacing', lhTight:'Tight', lhNormal:'Normal', lhLoose:'Loose',
   },
 };
 function t(k) { return (STR[LANG] && STR[LANG][k]) || STR.zh[k] || k; }
@@ -429,12 +431,14 @@ const prefs = {
   page: 'single',   // single | double
   nav: 'h',         // h=左右翻页  v=上下滚动
   font: 'def',      // 正文字体
+  lineHeight: 'normal',   // 行距：tight | normal | loose
 };
 function loadPrefs() {
   try {
     prefs.page = localStorage.getItem('br-page-' + book.format) === 'double' ? 'double' : 'single';
     prefs.nav = localStorage.getItem('br-nav-' + book.format) === 'v' ? 'v' : 'h';
     prefs.font = localStorage.getItem('br-font') || 'def';
+    prefs.lineHeight = localStorage.getItem('br-lineheight') || 'normal';
   } catch (e) {}
 }
 function savePrefs() {
@@ -442,6 +446,7 @@ function savePrefs() {
     localStorage.setItem('br-page-' + book.format, prefs.page);
     localStorage.setItem('br-nav-' + book.format, prefs.nav);
     localStorage.setItem('br-font', prefs.font);
+    localStorage.setItem('br-lineheight', prefs.lineHeight);
   } catch (e) {}
 }
 
@@ -459,6 +464,14 @@ const FONT_LIST = [
   { key: 'wenkai', i18n: 'fontWenkai', stack: '"LXGW WenKai Screen","KaiTi","STKaiti",serif', css: FONT_CSS.wenkai },
 ];
 const fontStack = () => (FONT_LIST.find(f => f.key === prefs.font) || FONT_LIST[0]).stack;
+
+/* 行距（EPUB 正文）：固定 px 不随字号缩放；1.2em 兜底防特大字号行间重叠 */
+const LH_LIST = [
+  { key: 'tight',  i18n: 'lhTight',  px: 24 },
+  { key: 'normal', i18n: 'lhNormal', px: 28 },
+  { key: 'loose',  i18n: 'lhLoose',  px: 34 },
+];
+const lhPx = () => (LH_LIST.find(o => o.key === prefs.lineHeight) || LH_LIST[1]).px;
 
 /* ---------- 移动端沉浸阅读：进入 5s 收起工具栏；点屏幕中央唤出；之后只有翻页/滑动阅读才收起 ---------- */
 /* 触屏设备经 pointer:coarse 自动启用；桌面浏览器联调可加 ?immersive=1 强制开启 */
@@ -904,6 +917,11 @@ async function initEpub() {
     'html, body { background:' + (dark ? '#221E1B' : '#FDFCF8') + ' !important; color:' +
       // 夜间用暗白（#BEB6AA）不刺眼：亮白在黑底上光晕强，久读累眼
       (dark ? '#BEB6AA' : '#26231E') + ' !important; }' +
+    // 行距：用户设定固定 px，不随字号缩放；!important 连内联样式一起击穿
+    // （txt 直转书常带内联 line-height，普通样式表规则压不住——与夜间颜色同一思路）
+    `p, div, span, li { line-height: max(${lhPx()}px, 1.2em) !important; }` +
+    `[style*="line-height"] { line-height: max(${lhPx()}px, 1.2em) !important; }` +
+    `h1, h2, h3, h4 { line-height: 1.35 !important; }` +
     (fontStack()
       ? // 用户选的正文字体：body !important 压过书内样式表；书内内联 font-family 一并击穿跟随
         `body { font-family: ${fontStack()} !important; }` +
@@ -999,9 +1017,7 @@ async function initEpub() {
 
   function wireRendition() {
     rendition.themes.default({
-      // 行距不随字号放大：正文固定 28px，字号只改字（max 的 1.2em 兜底防特大字号行间重叠）
-      'p, div, span, li': { 'line-height': 'max(28px, 1.2em)' },
-      'h1, h2, h3, h4': { 'line-height': '1.35' },
+      // 行距在 epubCss 里以 !important 注入（要压书内样式与内联样式），这里不再重复设
       'img, svg': { 'max-width': '98vw !important', 'max-height': '98vh !important',
                     'width': 'auto !important', 'height': 'auto !important', 'object-fit': 'contain' },
     });
@@ -1313,39 +1329,55 @@ async function initEpub() {
   addBtn('▶', t('next'), () => window._nav.next(), true);
   addBtn('A-', t('fontDown'), () => { fontSize = Math.max(80, fontSize - 10); rendition.themes.fontSize(fontSize + '%'); paintIframes(); schedSizeScroll(); });
   addBtn('A+', t('fontUp'), () => { fontSize = Math.min(200, fontSize + 10); rendition.themes.fontSize(fontSize + '%'); paintIframes(); schedSizeScroll(); });
-  const fontBtn = addBtn(t('fontBtn'), t('fontTitle'), showFontMenu);
+  const fontBtn = addBtn(t('fontBtn'), t('fontTitle'), () => showFontMenu());
+  const lhBtn = addBtn(t('lhBtn'), t('lhTitle'), () => showLineMenu());
 
-  /* 正文字体切换浮层：选择即全局记忆（br-font），立即重刷 iframe 主题与排版 */
-  let fontMenu = null;
-  function showFontMenu() {
-    if (fontMenu) { fontMenu.remove(); fontMenu = null; return; }
-    fontMenu = document.createElement('div');
-    fontMenu.id = 'fontMenu';
-    FONT_LIST.forEach(f => {
-      const row = document.createElement('div');
-      row.className = 'fm-row' + (prefs.font === f.key ? ' on' : '');
-      row.textContent = t(f.i18n);
-      row.onclick = () => {
-        prefs.font = f.key;
-        savePrefs();
-        fontMenu.remove(); fontMenu = null;
-        paintIframes(); schedSizeScroll();   // 字体影响排版 → 重新量取滚动高度
-      };
-      fontMenu.appendChild(row);
-    });
-    document.body.appendChild(fontMenu);
-    const r = fontBtn.getBoundingClientRect();
-    fontMenu.style.top = Math.max(8, Math.min(r.bottom + 8, innerHeight - fontMenu.offsetHeight - 12)) + 'px';
-    fontMenu.style.right = Math.max(8, innerWidth - r.right) + 'px';
-    // 点浮层外任意处关闭（书内 iframe 的点击不冒泡到父页，靠下一次交互自然收口）
-    setTimeout(() => {
-      document.addEventListener('click', function fmClose(e) {
-        if (!fontMenu) return;
-        if (fontMenu.contains(e.target)) { document.addEventListener('click', fmClose, { once: true }); return; }
-        fontMenu.remove(); fontMenu = null;
-      }, { once: true });
-    }, 0);
+  /* 浮层菜单通用骨架（字体/行距共用）：点按钮开合、点行回调、点浮层外关闭 */
+  function attachMenu(btn, fill) {
+    let menu = null;
+    const close = () => { if (menu) { menu.remove(); menu = null; } };
+    return () => {
+      if (menu) return close();
+      menu = document.createElement('div');
+      menu.id = 'fontMenu';   // 复用同一套浮层样式
+      fill(menu, close);
+      document.body.appendChild(menu);
+      const r = btn.getBoundingClientRect();
+      menu.style.top = Math.max(8, Math.min(r.bottom + 8, innerHeight - menu.offsetHeight - 12)) + 'px';
+      menu.style.right = Math.max(8, innerWidth - r.right) + 'px';
+      // 书内 iframe 的点击不冒泡到父页，靠下一次交互自然收口
+      setTimeout(() => {
+        document.addEventListener('click', function fmClose(e) {
+          if (!menu) return;
+          if (menu.contains(e.target)) { document.addEventListener('click', fmClose, { once: true }); return; }
+          close();
+        }, { once: true });
+      }, 0);
+    };
   }
+  function menuRows(menu, close, list, current, onPick) {
+    list.forEach(o => {
+      const row = document.createElement('div');
+      row.className = 'fm-row' + (current === o.key ? ' on' : '');
+      row.textContent = t(o.i18n);
+      row.onclick = () => { onPick(o); close(); };
+      menu.appendChild(row);
+    });
+  }
+
+  /* 正文字体：选择即全局记忆（br-font），立即重刷 iframe 主题与排版 */
+  const showFontMenu = attachMenu(fontBtn, (menu, close) =>
+    menuRows(menu, close, FONT_LIST, prefs.font, o => {
+      prefs.font = o.key; savePrefs();
+      paintIframes(); schedSizeScroll();   // 字体影响排版 → 重新量取滚动高度
+    }));
+
+  /* 行距：固定 px 全局记忆（br-lineheight），立即重刷 */
+  const showLineMenu = attachMenu(lhBtn, (menu, close) =>
+    menuRows(menu, close, LH_LIST, prefs.lineHeight, o => {
+      prefs.lineHeight = o.key; savePrefs();
+      paintIframes(); schedSizeScroll();   // 行距影响排版 → 重新量取滚动高度
+    }));
 
   // 上下滚动模式：章内先按屏滚动，到章首/章尾才切章（scrolled 流下 rendition.next()
   // 内部会崩，用 spine 序号直接 display）；左右翻页模式直接 prev/next
