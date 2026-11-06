@@ -54,6 +54,21 @@
   #fontMenu .fm-row:hover { background:rgba(194,142,92,.14); }
   #fontMenu .fm-row.on { color:var(--accent-deep); font-weight:700; background:rgba(194,142,92,.12); }
   body.night #fontMenu .fm-row.on { color:var(--accent); }
+  /* 行距步进器 */
+  #fontMenu .lh-stepper { display:flex; align-items:center; justify-content:space-between;
+                          gap:10px; padding:4px 8px 6px; }
+  #fontMenu .lh-btn { width:38px; height:32px; border:1px solid var(--line2);
+                      background:var(--panel2); color:var(--txt); border-radius:7px;
+                      font-size:17px; cursor:pointer; line-height:1; }
+  #fontMenu .lh-btn:hover { border-color:var(--accent); color:var(--accent-deep); }
+  body.night #fontMenu .lh-btn:hover { color:var(--accent); }
+  #fontMenu .lh-val { font-family:Manrope,monospace; font-size:13.5px; font-weight:700;
+                      color:var(--txt); min-width:48px; text-align:center; }
+  #fontMenu .lh-presets { display:flex; gap:4px; padding:0 6px 6px; border-top:1px solid var(--line); }
+  #fontMenu .lh-preset { flex:1; padding:8px 2px 2px; background:none; border:none;
+                         color:var(--sub); font-size:12.5px; cursor:pointer; white-space:nowrap; }
+  #fontMenu .lh-preset.on { color:var(--accent-deep); font-weight:700; }
+  body.night #fontMenu .lh-preset.on { color:var(--accent); }
 
   @media (max-width: 640px) {
     header { gap:5px; padding:0 8px; height:46px; }
@@ -433,14 +448,18 @@ const prefs = {
   page: 'single',   // single | double
   nav: 'h',         // h=左右翻页  v=上下滚动
   font: 'def',      // 正文字体
-  lineHeight: 'normal',   // 行距：tight | normal | loose
+  lineHeight: 28,   // 行距（px）：20–44，±2 步进
 };
 function loadPrefs() {
   try {
     prefs.page = localStorage.getItem('br-page-' + book.format) === 'double' ? 'double' : 'single';
     prefs.nav = localStorage.getItem('br-nav-' + book.format) === 'v' ? 'v' : 'h';
     prefs.font = localStorage.getItem('br-font') || 'def';
-    prefs.lineHeight = localStorage.getItem('br-lineheight') || 'normal';
+    // br-lineheight 现存数字 px；兼容早期三档关键词（tight/normal/loose）
+    const raw = localStorage.getItem('br-lineheight') || '';
+    const n = parseInt(raw, 10);
+    const LH_LEGACY = { tight: 24, normal: 28, loose: 34 };
+    prefs.lineHeight = (n >= 20 && n <= 44) ? n : (LH_LEGACY[raw] || 28);
   } catch (e) {}
 }
 function savePrefs() {
@@ -448,7 +467,7 @@ function savePrefs() {
     localStorage.setItem('br-page-' + book.format, prefs.page);
     localStorage.setItem('br-nav-' + book.format, prefs.nav);
     localStorage.setItem('br-font', prefs.font);
-    localStorage.setItem('br-lineheight', prefs.lineHeight);
+    localStorage.setItem('br-lineheight', String(prefs.lineHeight));
   } catch (e) {}
 }
 
@@ -467,13 +486,8 @@ const FONT_LIST = [
 ];
 const fontStack = () => (FONT_LIST.find(f => f.key === prefs.font) || FONT_LIST[0]).stack;
 
-/* 行距（EPUB 正文）：固定 px 不随字号缩放；1.2em 兜底防特大字号行间重叠 */
-const LH_LIST = [
-  { key: 'tight',  i18n: 'lhTight',  px: 24 },
-  { key: 'normal', i18n: 'lhNormal', px: 28 },
-  { key: 'loose',  i18n: 'lhLoose',  px: 34 },
-];
-const lhPx = () => (LH_LIST.find(o => o.key === prefs.lineHeight) || LH_LIST[1]).px;
+/* 行距（EPUB 正文）：固定 px 不随字号缩放，±2 连续调节；1.2em 兜底防特大字号行间重叠 */
+const LH_MIN = 20, LH_MAX = 44, LH_STEP = 2;
 
 /* ---------- 移动端沉浸阅读：进入 5s 收起工具栏；点屏幕中央唤出；之后只有翻页/滑动阅读才收起 ---------- */
 /* 触屏设备经 pointer:coarse 自动启用；桌面浏览器联调可加 ?immersive=1 强制开启 */
@@ -948,8 +962,8 @@ async function initEpub() {
       (dark ? '#BEB6AA' : '#26231E') + ' !important; }' +
     // 行距：用户设定固定 px，不随字号缩放；!important 连内联样式一起击穿
     // （txt 直转书常带内联 line-height，普通样式表规则压不住——与夜间颜色同一思路）
-    `p, div, span, li { line-height: max(${lhPx()}px, 1.2em) !important; }` +
-    `[style*="line-height"] { line-height: max(${lhPx()}px, 1.2em) !important; }` +
+    `p, div, span, li { line-height: max(${prefs.lineHeight}px, 1.2em) !important; }` +
+    `[style*="line-height"] { line-height: max(${prefs.lineHeight}px, 1.2em) !important; }` +
     `h1, h2, h3, h4 { line-height: 1.35 !important; }` +
     (fontStack()
       ? // 用户选的正文字体：body !important 压过书内样式表；书内内联 font-family 一并击穿跟随
@@ -1401,12 +1415,41 @@ async function initEpub() {
       paintIframes(); schedSizeScroll();   // 字体影响排版 → 重新量取滚动高度
     }));
 
-  /* 行距：固定 px 全局记忆（br-lineheight），立即重刷 */
-  const showLineMenu = attachMenu(lhBtn, (menu, close) =>
-    menuRows(menu, close, LH_LIST, prefs.lineHeight, o => {
-      prefs.lineHeight = o.key; savePrefs();
+  /* 行距：步进 ±2px（20–44）即时生效；三档预设快捷跳转。全局记忆（br-lineheight） */
+  const showLineMenu = attachMenu(lhBtn, (menu, close) => {
+    const stepper = document.createElement('div');
+    stepper.className = 'lh-stepper';
+    stepper.innerHTML =
+      '<button class="lh-btn" data-act="dec" title="减小行距">−</button>' +
+      '<span class="lh-val">' + prefs.lineHeight + 'px</span>' +
+      '<button class="lh-btn" data-act="inc" title="增大行距">＋</button>';
+    menu.appendChild(stepper);
+
+    const presets = document.createElement('div');
+    presets.className = 'lh-presets';
+    [[t('lhTight'), 24], [t('lhNormal'), 28], [t('lhLoose'), 34]].forEach(([label, v]) => {
+      const b = document.createElement('button');
+      b.className = 'lh-preset' + (prefs.lineHeight === v ? ' on' : '');
+      b.textContent = label + ' ' + v;
+      b.onclick = () => { apply(v); close(); };
+      presets.appendChild(b);
+    });
+    menu.appendChild(presets);
+
+    function apply(v) {
+      prefs.lineHeight = Math.max(LH_MIN, Math.min(LH_MAX, v));
+      savePrefs();
+      stepper.querySelector('.lh-val').textContent = prefs.lineHeight + 'px';
+      presets.querySelectorAll('.lh-preset').forEach(b =>
+        b.classList.toggle('on', b.textContent.endsWith(String(prefs.lineHeight))));
       paintIframes(); schedSizeScroll();   // 行距影响排版 → 重新量取滚动高度
-    }));
+    }
+    stepper.addEventListener('click', e => {
+      const b = e.target.closest('.lh-btn');
+      if (!b) return;
+      apply(prefs.lineHeight + (b.dataset.act === 'inc' ? LH_STEP : -LH_STEP));
+    });
+  });
 
   // 上下滚动模式：章内先按屏滚动，到章首/章尾才切章（scrolled 流下 rendition.next()
   // 内部会崩，用 spine 序号直接 display）；左右翻页模式直接 prev/next
