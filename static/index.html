@@ -5,6 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>家庭图书馆 · 局域网数字书房</title>
 <link rel="icon" type="image/svg+xml" href="/static/favicon.svg"/>
+<!-- PWA：手机 Chrome「添加到主屏幕」后以独立窗口启动（无地址栏） -->
+<link rel="manifest" href="/static/manifest.json"/>
+<meta name="theme-color" content="#FCF9F2"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-title" content="家庭图书馆"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="default"/>
+<link rel="apple-touch-icon" href="/static/icons/icon-192.png"/>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@500;600;700&family=Manrope:wght@500;600;700&display=swap" rel="stylesheet"/>
@@ -1514,6 +1522,9 @@ function applyTheme() {
   $('#themeBtn').innerHTML = (dark ? ICON_SUN : ICON_MOON) +
     '<span>' + t(dark ? 'dayLabel' : 'nightLabel') + '</span>';
   $('#themeBtn').title = dark ? t('toDay') : t('toNight');
+  // 系统栏/浏览器框随主题着色（PWA 与 Chrome 地址栏）
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.content = dark ? '#1C1917' : '#FCF9F2';
 }
 $('#themeBtn').onclick = () => {
   themeState.mode = themeState.mode === 'dark' ? 'light' : 'dark';

@@ -1,0 +1,13 @@
+{
+  "name": "家庭图书馆",
+  "short_name": "家庭图书馆",
+  "description": "局域网知识管理系统 · 书架、在线阅读、费曼考核与 AI 荐学",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FCF9F2",
+  "theme_color": "#FCF9F2",
+  "icons": [
+    { "src": "/static/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/static/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

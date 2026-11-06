@@ -5,6 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>阅读器 · 家庭图书馆</title>
 <link rel="icon" type="image/svg+xml" href="/static/favicon.svg"/>
+<!-- PWA：手机 Chrome「添加到主屏幕」后以独立窗口启动（无地址栏） -->
+<link rel="manifest" href="/static/manifest.json"/>
+<meta name="theme-color" content="#FCF9F2"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-title" content="家庭图书馆"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="default"/>
+<link rel="apple-touch-icon" href="/static/icons/icon-192.png"/>
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
@@ -238,6 +246,7 @@
   <span id="pos"></span>
   <button class="btn icon" id="dlBtn" data-i18n-title="dl">⬇</button>
   <button class="btn icon" id="notesBtn" data-i18n-title="notes">✒</button>
+  <button class="btn icon" id="fsBtn" title="全屏阅读">⛶</button>
   <button class="btn icon" id="themeBtn" title="日间 / 夜间模式">🌙</button>
 </header>
 
@@ -539,8 +548,27 @@ function applyTheme() {
   const dark = themeState.mode === 'dark';
   document.body.classList.toggle('night', dark);
   $('#themeBtn').textContent = dark ? '☀️' : '🌙';
+  // 系统栏/浏览器框随主题着色（PWA 与 Chrome 地址栏）
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.content = dark ? '#1C1917' : '#FCF9F2';
   if (window._applyFormatTheme) window._applyFormatTheme(dark);
 }
+
+/* ---------- 全屏阅读：Android Chrome 点击后地址栏+状态栏全部隐藏（iOS 不支持网页全屏，
+   按钮自动隐藏，改用「添加到主屏幕」方案） ---------- */
+(function () {
+  const fsBtn = $('#fsBtn');
+  if (!fsBtn) return;
+  if (!document.documentElement.requestFullscreen) { fsBtn.style.display = 'none'; return; }
+  fsBtn.onclick = () => {
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    else document.documentElement.requestFullscreen().catch(() => {});
+  };
+  document.addEventListener('fullscreenchange', () => {
+    fsBtn.textContent = document.fullscreenElement ? '🗗' : '⛶';
+    fsBtn.title = document.fullscreenElement ? '退出全屏' : '全屏阅读';
+  });
+})();
 $('#themeBtn').onclick = () => {
   themeState.mode = themeState.mode === 'dark' ? 'light' : 'dark';
   try { localStorage.setItem('br-theme', themeState.mode); } catch (e) {}
