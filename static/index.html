@@ -1158,6 +1158,7 @@ const STR_I = {
     fyDone: '评估已生成', fyScore: '掌握度', fyWeak: '没懂的地方',
     fyWeakNone: '讲解清晰，没发现明显漏洞',
     fyDelConfirm: '删除这场考核记录？', fyDeleted: '已删除',
+    courseDelConfirm: '删除这门荐学课程？',
     fyPickFirst: '请先选择一本书', fyFail: '失败：', fyLoadFail: '加载失败：',
     pickSearchPh: '搜索书名 / 作者…', pickRecent: '最近阅读', pickLatest: '最近入库',
     pickResults: '搜索结果', pickNone: '没有匹配的书', pickUpload: '上传本地书',
@@ -1322,6 +1323,7 @@ const STR_I = {
     fyDone: 'Assessment ready', fyScore: 'mastery', fyWeak: 'Gaps found',
     fyWeakNone: 'Clearly explained — no obvious gaps found',
     fyDelConfirm: 'Delete this session?', fyDeleted: 'Deleted',
+    courseDelConfirm: 'Delete this course?',
     fyPickFirst: 'Pick a book first', fyFail: 'Failed: ', fyLoadFail: 'Failed to load: ',
     pickSearchPh: 'Search title / author…', pickRecent: 'Recently read', pickLatest: 'Recently added',
     pickResults: 'Search results', pickNone: 'No matching books', pickUpload: 'Upload a book',
@@ -1778,7 +1780,7 @@ async function renderLnCourses() {
       el.onclick = () => { lnCur = c; renderLnChat(); renderLnCourses(); };
       el.querySelector('.fs-del').onclick = async e => {
         e.stopPropagation();
-        if (!confirm(t('fyDelConfirm'))) return;
+        if (!confirm(t('courseDelConfirm'))) return;
         try {
           await api('/api/learn/courses/' + c.id, { method: 'DELETE' });
           if (lnCur && lnCur.id === c.id) { lnCur = null; loadLearn(); }
