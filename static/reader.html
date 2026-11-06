@@ -463,7 +463,7 @@ const fontStack = () => (FONT_LIST.find(f => f.key === prefs.font) || FONT_LIST[
 /* ---------- 移动端沉浸阅读：进入 3s 收起工具栏；点屏幕中央唤出；翻页/滑动再收起 ---------- */
 /* 触屏设备经 pointer:coarse 自动启用；桌面浏览器联调可加 ?immersive=1 强制开启 */
 const isTouch = matchMedia('(pointer: coarse)').matches || params.has('immersive');
-const imm = { timer: null, enteredAt: Date.now() };
+const imm = { timer: null, enteredAt: Date.now(), lastTouch: 0 };
 function immHide() {
   if (!isTouch || document.body.classList.contains('imm-off')) return;
   document.body.classList.add('imm-off');
@@ -477,13 +477,14 @@ function immShow() {
   imm.timer = setTimeout(immHide, 3000);   // 唤出后 3s 无阅读动作自动再收起
   immReflow();
 }
-function immReflow() {   // 工具栏收起/展开改变 stage 高度 → epub 分页流需要重排
+function immReflow() {   // 工具栏收起/展开改变 stage 高度 → 仅分页流需要重排
+  // 滚动模式绝不能 resize：epub.js 重排会触发一次程序性滚动，刚唤出的工具栏会被
+  // “继续阅读→收起”逻辑误收（滚动模式的章高按内容量取，与 stage 高度无关，本就无需重排）
   setTimeout(() => {
     const stg = $('#stage');
-    if (window._rend && window._rend.resize && stg) {
+    if (prefs.nav === 'h' && window._rend && window._rend.resize && stg) {
       try { window._rend.resize(stg.clientWidth, stg.clientHeight); } catch (e) {}
     }
-    window._sizeScroll && window._sizeScroll();
   }, 320);
 }
 function immTap(cx, cy) {
@@ -496,10 +497,14 @@ function immTap(cx, cy) {
 }
 window._immTap = immTap;
 window._immHide = immHide;
+window._immTouch = () => { imm.lastTouch = Date.now(); };   // 书内 iframe 触摸时回填（滚动归属判定用）
 if (isTouch) {
-  setTimeout(immHide, 3000);   // 进入阅读页 3s 后收起
+  imm.timer = setTimeout(immHide, 3000);   // 进入阅读页 3s 后收起
+  $('#stage').addEventListener('touchstart', () => { imm.lastTouch = Date.now(); }, { passive: true });
   $('#stage').addEventListener('scroll', () => {
-    if (Date.now() - imm.enteredAt > 3500) immHide();   // 继续滑动阅读 → 收起（避开进页定位的自动滚动）
+    // 继续滑动阅读 → 收起。只认“真实触摸带来的滚动”（5s 内摸过屏，覆盖惯性滚动），
+    // epub.js 回流/进度定位这类程序性滚动不收，否则呼出的工具栏会被瞬间误收
+    if (Date.now() - imm.enteredAt > 3500 && Date.now() - imm.lastTouch < 5000) immHide();
   }, { passive: true, capture: true });
   // PDF / 漫画及 stage 直接内容：点按走同一套中央唤出逻辑（capture 先于各格式自己的翻页处理）
   $('#stage').addEventListener('click', e => {
@@ -1045,6 +1050,7 @@ async function initEpub() {
         doc.addEventListener('touchstart', e => {
           tx = e.touches[0].clientX; ty = e.touches[0].clientY;
           parent.window._cancelPin && parent.window._cancelPin();
+          parent.window._immTouch && parent.window._immTouch();   // 真实触摸：滑动收起判定的归属依据
         }, { passive: true });
         doc.addEventListener('touchend', e => {
           if (tx == null) return;
