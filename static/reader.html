@@ -460,7 +460,7 @@ const FONT_LIST = [
 ];
 const fontStack = () => (FONT_LIST.find(f => f.key === prefs.font) || FONT_LIST[0]).stack;
 
-/* ---------- 移动端沉浸阅读：进入 3s 收起工具栏；点屏幕中央唤出；翻页/滑动再收起 ---------- */
+/* ---------- 移动端沉浸阅读：进入 5s 收起工具栏；点屏幕中央唤出；之后只有翻页/滑动阅读才收起 ---------- */
 /* 触屏设备经 pointer:coarse 自动启用；桌面浏览器联调可加 ?immersive=1 强制开启 */
 const isTouch = matchMedia('(pointer: coarse)').matches || params.has('immersive');
 const imm = { timer: null, enteredAt: Date.now(), lastTouch: 0 };
@@ -473,8 +473,7 @@ function immHide() {
 function immShow() {
   if (!isTouch) return;
   document.body.classList.remove('imm-off');
-  clearTimeout(imm.timer);
-  imm.timer = setTimeout(immHide, 3000);   // 唤出后 3s 无阅读动作自动再收起
+  clearTimeout(imm.timer);   // 连进门的定时收起一并取消：呼出后不再倒计时，只有阅读动作才收
   immReflow();
 }
 function immReflow() {   // 工具栏收起/展开改变 stage 高度 → 仅分页流需要重排
@@ -499,7 +498,7 @@ window._immTap = immTap;
 window._immHide = immHide;
 window._immTouch = () => { imm.lastTouch = Date.now(); };   // 书内 iframe 触摸时回填（滚动归属判定用）
 if (isTouch) {
-  imm.timer = setTimeout(immHide, 3000);   // 进入阅读页 3s 后收起
+  imm.timer = setTimeout(immHide, 5000);   // 进入阅读页 5s 后收起
   $('#stage').addEventListener('touchstart', () => { imm.lastTouch = Date.now(); }, { passive: true });
   $('#stage').addEventListener('scroll', () => {
     // 继续滑动阅读 → 收起。只认“真实触摸带来的滚动”（5s 内摸过屏，覆盖惯性滚动），
