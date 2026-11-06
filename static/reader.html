@@ -459,7 +459,7 @@ function loadPrefs() {
     const raw = localStorage.getItem('br-lineheight') || '';
     const n = parseInt(raw, 10);
     const LH_LEGACY = { tight: 24, normal: 28, loose: 34 };
-    prefs.lineHeight = (n >= 20 && n <= 44) ? n : (LH_LEGACY[raw] || 28);
+    prefs.lineHeight = (n >= LH_MIN && n <= LH_MAX) ? n : (LH_LEGACY[raw] || 28);
   } catch (e) {}
 }
 function savePrefs() {
@@ -486,8 +486,10 @@ const FONT_LIST = [
 ];
 const fontStack = () => (FONT_LIST.find(f => f.key === prefs.font) || FONT_LIST[0]).stack;
 
-/* 行距（EPUB 正文）：固定 px 不随字号缩放，±2 连续调节；1.2em 兜底防特大字号行间重叠 */
-const LH_MIN = 20, LH_MAX = 44, LH_STEP = 2;
+/* 行距（EPUB 正文）：固定 px 不随字号缩放，±2 连续调节（16–60）。
+   不设 1.2em 兜底——有兜底时大字号下怎么调都卡在兜底值上（"调行距没效果"的根因），
+   调多紧由用户自己定，调太密再点回来即可 */
+const LH_MIN = 16, LH_MAX = 60, LH_STEP = 2;
 
 /* ---------- 移动端沉浸阅读：进入 5s 收起工具栏；点屏幕中央唤出；之后只有翻页/滑动阅读才收起 ---------- */
 /* 触屏设备经 pointer:coarse 自动启用；桌面浏览器联调可加 ?immersive=1 强制开启 */
@@ -952,6 +954,9 @@ async function initEpub() {
 
   const epub = ePub('/api/file/' + bookId, { openAs: 'epub' });
   let rendition = null, lastCfi = null, fontSize = 110;
+  // 字号记忆（br-fontsize，全局）：上次调过的字号进书即恢复
+  try { const v = parseInt(localStorage.getItem('br-fontsize'), 10); if (v >= 80 && v <= 300) fontSize = v; } catch (e) {}
+  const saveFontSize = () => { try { localStorage.setItem('br-fontsize', String(fontSize)); } catch (e) {} };
 
   const epubCss = dark =>
     // 字号走 html !important：压过书内写死的 html/body font-size（txt 直转书的通病），
@@ -962,8 +967,8 @@ async function initEpub() {
       (dark ? '#BEB6AA' : '#26231E') + ' !important; }' +
     // 行距：用户设定固定 px，不随字号缩放；!important 连内联样式一起击穿
     // （txt 直转书常带内联 line-height，普通样式表规则压不住——与夜间颜色同一思路）
-    `p, div, span, li { line-height: max(${prefs.lineHeight}px, 1.2em) !important; }` +
-    `[style*="line-height"] { line-height: max(${prefs.lineHeight}px, 1.2em) !important; }` +
+    `p, div, span, li { line-height: ${prefs.lineHeight}px !important; }` +
+    `[style*="line-height"] { line-height: ${prefs.lineHeight}px !important; }` +
     `h1, h2, h3, h4 { line-height: 1.35 !important; }` +
     (fontStack()
       ? // 用户选的正文字体：body !important 压过书内样式表；书内内联 font-family 一并击穿跟随
@@ -1370,8 +1375,8 @@ async function initEpub() {
   addBtn(t('toc'), t('tocTip'), () => $('#toc').classList.toggle('open'));
   addBtn('◀', t('prev'), () => window._nav.prev(), true);
   addBtn('▶', t('next'), () => window._nav.next(), true);
-  addBtn('A-', t('fontDown'), () => { fontSize = Math.max(80, fontSize - 10); rendition.themes.fontSize(fontSize + '%'); paintIframes(); schedSizeScroll(); });
-  addBtn('A+', t('fontUp'), () => { fontSize = Math.min(200, fontSize + 10); rendition.themes.fontSize(fontSize + '%'); paintIframes(); schedSizeScroll(); });
+  addBtn('A-', t('fontDown'), () => { fontSize = Math.max(80, fontSize - 10); rendition.themes.fontSize(fontSize + '%'); paintIframes(); schedSizeScroll(); saveFontSize(); });
+  addBtn('A+', t('fontUp'), () => { fontSize = Math.min(300, fontSize + 10); rendition.themes.fontSize(fontSize + '%'); paintIframes(); schedSizeScroll(); saveFontSize(); });
   const fontBtn = addBtn(t('fontBtn'), t('fontTitle'), () => showFontMenu());
   const lhBtn = addBtn(t('lhBtn'), t('lhTitle'), () => showLineMenu());
 
