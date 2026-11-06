@@ -149,8 +149,23 @@
            background:#1E293B; color:#FDFBF7; border-radius:8px; font-size:13px; z-index:99;
            border:1px solid rgba(194,142,92,.3); }
   body.night #toast { background:#151210; }
+  /* 加载层放 #stage 外层（epub.js 挂载会清空 stage 容器，放里面会被连根清掉） */
   #loading { position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
-             color:var(--sub); font-size:14px; }
+             color:var(--sub); font-size:14px; z-index:5; background:var(--bg); }
+  .load-box { display:flex; flex-direction:column; align-items:center; gap:16px; }
+  /* 翻书动效：三页纸绕书脊依次翻转 */
+  .load-book { position:relative; width:46px; height:34px; perspective:130px; }
+  .load-book span { position:absolute; left:0; top:0; width:46px; height:34px; border-radius:3px;
+                    background:linear-gradient(135deg,#C28E5C,#A8763E); border:1px solid rgba(0,0,0,.18);
+                    transform-origin:left center; animation:pageflip 1.5s infinite ease-in-out; }
+  .load-book span:nth-child(2) { background:linear-gradient(135deg,#D9A973,#BE8B55); animation-delay:.22s; }
+  .load-book span:nth-child(3) { background:linear-gradient(135deg,#E5C397,#CE9E68); animation-delay:.44s; }
+  @keyframes pageflip {
+    0%, 100% { transform:rotateY(0deg); }
+    50% { transform:rotateY(-165deg); }
+  }
+  @media (prefers-reduced-motion: reduce) { .load-book span { animation:none; } }
+  .load-txt { letter-spacing:.12em; font-family:"Noto Serif SC",serif; }
 
   /* ================= 云朵浮层（待解答问题，与主页同款） ================= */
   #qCloud { position:fixed; z-index:9999; width:96px; height:68px; cursor:grab;
@@ -212,7 +227,11 @@
 </header>
 
 <main>
-  <div id="stage"><div id="loading">加载中…</div></div>
+  <div id="loading"><div class="load-box">
+    <div class="load-book"><span></span><span></span><span></span></div>
+    <div class="load-txt" id="loadingTxt">加载中…</div>
+  </div></div>
+  <div id="stage"></div>
   <div id="fail" class="hide"></div>
 </main>
 
@@ -277,6 +296,7 @@ const STR = {
     parseFail:'EPUB 解析失败：', pdfLoad:'PDF 加载失败：', netErr:'网络错误：',
     noBook:'书籍不存在', comicNone:'压缩包内没有找到图片',
   mobiNoRead:'此书为 MOBI / AZW3 格式（Amazon 私有格式），暂不支持在线阅读——书库已收录，可下载；用 Calibre 转成 EPUB 替换后即可阅读、划线与 AI 精读。',
+  loadingBook:'加载中…', openingBook: b => `正在打开《${b}》…`,
     firstPage:'已经是第一页了', lastPage:'已经是最后一页了',
     zoom:b=>'缩放 '+Math.round(b*100)+'%',
     selCancel:'取消', selOnly:'✂ 仅划线', selPlus:'💬 划线并记想法', selSave:'💾 保存划线+想法',
@@ -304,6 +324,7 @@ const STR = {
     parseFail:'Failed to parse EPUB: ', pdfLoad:'Failed to load PDF: ', netErr:'Network error: ',
     noBook:'Book not found', comicNone:'No images found in the archive',
   mobiNoRead:'This book is in MOBI / AZW3 (Amazon proprietary) format and cannot be read online. It is catalogued and downloadable — convert it to EPUB with Calibre and replace the file to read, highlight and AI-digest it.',
+  loadingBook:'Loading…', openingBook: b => `Opening “${b}”…`,
     firstPage:'Already at the first page', lastPage:'Already at the last page',
     zoom:b=>'Zoom '+Math.round(b*100)+'%',
     selCancel:'Cancel', selOnly:'✂ Highlight', selPlus:'💬 Highlight & add thought', selSave:'💾 Save',
@@ -322,9 +343,19 @@ function toast(msg, ms = 2400) {
   const t = $('#toast'); t.textContent = msg; t.classList.remove('hide');
   clearTimeout(t._h); t._h = setTimeout(() => t.classList.add('hide'), ms);
 }
+/* 收起加载动效（幂等）。时机原则：首屏真正渲染出来才收，别在数据还在路上时提前露白 */
+function hideLoading() {
+  const el = $('#loading');
+  if (el) el.classList.add('hide');
+}
+/* 图片类内容：首图就绪（或加载失败）才收动效 */
+function imgReady(im) {
+  if (im.complete) return hideLoading();
+  im.addEventListener('load', hideLoading, { once: true });
+  im.addEventListener('error', hideLoading, { once: true });
+}
 function fail(msg) {
-  const loading = $('#loading');
-  if (loading) loading.classList.add('hide');
+  hideLoading();
   console.error('[reader]', msg);
   const f = $('#fail'); f.classList.remove('hide');
   f.innerHTML = `<div style="font-size:40px">📖</div><div>${msg}</div>` +
@@ -729,11 +760,12 @@ $('#dlBtn').onclick = async () => {
       fetch('/api/auth/me').then(r => r.json()),
       fetch('/api/book/' + bookId),
     ]);
-    me = meR.user;
-    if (!bookR.ok) { const e = await bookR.json().catch(() => ({})); return fail(e.detail || '书籍不存在'); }
-    book = await bookR.json();
+  me = meR.user;
+  if (!bookR.ok) { const e = await bookR.json().catch(() => ({})); return fail(e.detail || '书籍不存在'); }
+  book = await bookR.json();
   } catch (e) { return fail('网络错误：' + e.message); }
   if (!me) toast(t('notLogin'), 3500);
+  $('#loadingTxt').textContent = t('openingBook')(book.title);
   $('#title').textContent = book.title;
   document.title = book.title + ' · 阅读器';
   loadPrefs();
@@ -772,7 +804,6 @@ function buildModeButtons(onChange) {
 async function initEpub() {
   try { await loadAny(CDNS.jszip); await loadAny(CDNS.epub); }
   catch (e) { return fail(t('epubFail')); }
-  $('#loading').classList.add('hide');
 
   const epub = ePub('/api/file/' + bookId, { openAs: 'epub' });
   let rendition = null, lastCfi = null, fontSize = 110;
@@ -868,6 +899,7 @@ async function initEpub() {
     window._applyFormatTheme = () => paintIframes();
 
     rendition.on('rendered', () => {
+      hideLoading();   // 首章画出来才收动效（display 失败走 fail 也会收）
       paintIframes(); applyHighlights(); schedSizeScroll();
       // 每个书内文档一次性绑定：点划线开抽屉 / 键盘转发 / 划线悬浮浮层
       document.querySelectorAll('#stage iframe').forEach(f => {
@@ -1280,7 +1312,6 @@ async function initPdf() {
     }).promise;
   } catch (e) { return fail('PDF 加载失败：' + (e.message || e)); }
 
-  $('#loading').classList.add('hide');
   const st = { page: 1, total: pdf.numPages, zoom: 1.1, cur: 0 };
   const stage = $('#stage');
 
@@ -1339,6 +1370,7 @@ async function initPdf() {
     box.appendChild(canvas);
     await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp,
                         transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : null }).promise;
+    hideLoading();   // 首页画布真正画完才收动效
     box.appendChild(highlightRects(n, vp.width, vp.height));
     addTextLayer(page, box, canvas, zoom);
     return page;
@@ -1361,7 +1393,7 @@ async function initPdf() {
       const box = document.createElement('div');
       box.className = 'pageBox';
       wrapH.appendChild(box);
-      try { await renderInto(box, n, zoom); } catch (e) {}
+      try { await renderInto(box, n, zoom); } catch (e) { hideLoading(); }
     }
     if (token === hToken) {
       setPos(st.page + (cols === 2 && st.page + 1 <= st.total ? '-' + (st.page + 1) : '') + ' / ' + st.total);
@@ -1401,7 +1433,7 @@ async function initPdf() {
     try {
       await renderInto(item.box, item.n, zoom);
       updatePosScroll();
-    } catch (e) { item.done = false; }
+    } catch (e) { item.done = false; hideLoading(); }
   }
   function updatePosScroll() {
     const mid = stage.getBoundingClientRect().top + stage.clientHeight / 2;
@@ -1554,7 +1586,6 @@ async function initComic() {
   const total = data.count;
   if (!total) return fail('压缩包内没有找到图片');
 
-  $('#loading').classList.add('hide');
   const st = { idx: 0 };
   const stage = $('#stage');
   stage.style.overflow = 'auto';
@@ -1579,6 +1610,7 @@ async function initComic() {
       im.className = 'comic';
       im.src = imgUrl(i);
       im.alt = '第' + (i + 1) + '页';
+      imgReady(im);
       wrapH.appendChild(im);
     };
     if (prefs.page === 'double') {
@@ -1607,6 +1639,7 @@ async function initComic() {
       im.src = imgUrl(i);
       im.loading = 'lazy';
       im.alt = '第' + (i + 1) + '页';
+      imgReady(im);
       im.style.maxWidth = '100%';
       im.style.maxHeight = '96vh';
       im.style.display = 'block';
