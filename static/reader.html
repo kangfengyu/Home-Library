@@ -239,7 +239,7 @@
   <span id="pos"></span>
   <button class="btn icon" id="dlBtn" data-i18n-title="dl">⬇</button>
   <button class="btn icon" id="notesBtn" data-i18n-title="notes">✒</button>
-  <button class="btn icon" id="fsBtn" title="全屏阅读">⛶</button>
+  <button class="btn icon" id="fsBtn" title="全屏阅读"></button>
   <button class="btn icon" id="themeBtn" title="日间 / 夜间模式">🌙</button>
 </header>
 
@@ -547,19 +547,27 @@ function applyTheme() {
   if (window._applyFormatTheme) window._applyFormatTheme(dark);
 }
 
-/* ---------- 全屏阅读：Android Chrome 点击后地址栏+状态栏全部隐藏（iOS 不支持网页全屏，
-   按钮自动隐藏，改用「添加到主屏幕」方案） ---------- */
+/* ---------- 全屏阅读：Android Chrome 点击后藏浏览器框（iOS 不支持网页全屏，按钮自动隐藏） ----------
+   图标用内联 SVG：生僻 Unicode（⛶/🗗）在部分手机字体里缺字形，会渲染成占位框 */
 (function () {
   const fsBtn = $('#fsBtn');
   if (!fsBtn) return;
+  const FS_ENTER = '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">' +
+    '<path d="M1 5V1h4M15 5V1h-4M15 11v4h-4M1 11v4h4" fill="none" stroke="currentColor" ' +
+    'stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const FS_EXIT = '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">' +
+    '<path d="M5 1v4H1M11 1v4h4M11 15v-4h4M5 15v-4H1" fill="none" stroke="currentColor" ' +
+    'stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   if (!document.documentElement.requestFullscreen) { fsBtn.style.display = 'none'; return; }
+  fsBtn.innerHTML = FS_ENTER;
   fsBtn.onclick = () => {
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     else document.documentElement.requestFullscreen().catch(() => {});
   };
   document.addEventListener('fullscreenchange', () => {
-    fsBtn.textContent = document.fullscreenElement ? '🗗' : '⛶';
-    fsBtn.title = document.fullscreenElement ? '退出全屏' : '全屏阅读';
+    const on = !!document.fullscreenElement;
+    fsBtn.innerHTML = on ? FS_EXIT : FS_ENTER;
+    fsBtn.title = on ? '退出全屏' : '全屏阅读';
   });
 })();
 $('#themeBtn').onclick = () => {
