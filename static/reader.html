@@ -476,22 +476,24 @@ setInterval(() => {
 
 /* ---------- 阅读时长心跳（页面可见时每 15 秒上报；隐藏/关闭时补发零头） ---------- */
 let lastBeat = Date.now();
-function beat() {
+function beat(force = false) {
   if (!me) return;
   const now = Date.now();
   const delta = Math.round((now - lastBeat) / 1000);
   lastBeat = now;
   if (delta < 5 || delta > 90) return;               // 异常间隔丢弃
-  if (document.visibilityState !== 'visible') return;
+  // force：切走/关闭页面的瞬间补发刚过去的这段（仍是可见阅读时间）——
+  // 此时 visibilityState 已是 hidden，不 force 会被下面拦截成死代码
+  if (!force && document.visibilityState !== 'visible') return;
   fetch('/api/stats/heartbeat', { method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ seconds: delta }) }).catch(() => {});
 }
-setInterval(beat, 15000);
+setInterval(() => beat(), 15000);
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) beat(); else lastBeat = Date.now();
+  if (document.hidden) beat(true); else lastBeat = Date.now();
 });
-window.addEventListener('pagehide', beat);
+window.addEventListener('pagehide', () => beat(true));
 async function loadSavedPosition() {
   if (!me) return null;
   try {
