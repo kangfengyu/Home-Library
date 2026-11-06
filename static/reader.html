@@ -993,6 +993,14 @@ async function initEpub() {
     `p, div, span, li { line-height: ${prefs.lineHeight}px !important; }` +
     `[style*="line-height"] { line-height: ${prefs.lineHeight}px !important; }` +
     `h1, h2, h3, h4 { line-height: 1.35 !important; }` +
+    // 字号缩放的根是 html %（上面已 !important）。但不少书（尤其 txt 直转）把正文写死 px：
+    // 标题是 em 相对字会跟着变，正文却纹丝不动（「字号没效果」的真根因）。
+    // 这里把正文标签锚回父级（1em）、body 锚回根（1rem），内联写死的段落一并解锁；
+    // div 不加 !important——书内 .title 类的标题相对字号（如 2em）优先级更高，标题不会被打平
+    `body { font-size: 1rem !important; }` +
+    `p, li, dd, dt, blockquote, td, th { font-size: 1em !important; }` +
+    `p[style*="font-size"], li[style*="font-size"], td[style*="font-size"], blockquote[style*="font-size"] { font-size: 1em !important; }` +
+    `div { font-size: 1em; }` +
     (fontStack()
       ? // 用户选的正文字体：body !important 压过书内样式表；书内内联 font-family 一并击穿跟随
         `body { font-family: ${fontStack()} !important; }` +
