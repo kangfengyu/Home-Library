@@ -981,10 +981,10 @@ async function initEpub() {
   }
   const saveFontSize = () => { try { localStorage.setItem('br-fontsize', String(fontSize)); } catch (e) {} };
 
-  const epubCss = dark =>
-    // 字号走 html !important：压过书内写死的 html/body font-size（txt 直转书的通病），
-    // 正文用 em/百分比的自然连锁缩放
-    `html { font-size: ${fontSize}% !important; }` +
+  const epubCss = (dark, rootPct = 100) =>
+    // 根字号固定 100%：缩放统一由 scaleTextDoc 逐元素强制执行（见下），
+    // 兜底分支才会临时用根字号 % 缩放
+    `html { font-size: ${rootPct}% !important; }` +
     'html, body { background:' + (dark ? '#221E1B' : '#FDFCF8') + ' !important; color:' +
       // 夜间用暗白（#BEB6AA）不刺眼：亮白在黑底上光晕强，久读累眼
       (dark ? '#BEB6AA' : '#26231E') + ' !important; }' +
@@ -1038,7 +1038,27 @@ async function initEpub() {
       style.textContent = epubCss(dark);
       doc.querySelectorAll('svg[preserveAspectRatio="none"]').forEach(s =>
         s.setAttribute('preserveAspectRatio', 'xMidYMid meet'));
+      try { scaleTextDoc(doc); }
+      catch (e) { style.textContent = epubCss(dark, fontSize); }   // 逐元素缩放异常 → 退回根字号%方案
     });
+  }
+
+  /* 逐元素字号缩放：不管书用什么单位/选择器锁字号（span 写死 px、类样式 px、<font> 标签…），
+     每个元素首次出现时量出「自然字号」（根 100% 基准），之后统一按 fontSize% 重写为内联 px。
+     相对结构保留（h1 的 2em 依旧 2 倍），px 锁死的正文也强制跟随设置 */
+  function scaleTextDoc(doc) {
+    if (!doc.body) return;
+    const mult = fontSize / 100;
+    doc.body.querySelectorAll('*').forEach(el => {
+      if (!el._brBase) {
+        // 新元素的自然值：首遍时全文档尚未写过内联（自然值直读）；
+        // 之后新增的（如划线包裹 span）继承自已缩放父级，需除回倍数
+        const cur = parseFloat(getComputedStyle(el).fontSize) || 16;
+        el._brBase = cur / (doc._brScaled ? mult : 1);
+      }
+      el.style.setProperty('font-size', (el._brBase * mult).toFixed(2) + 'px', 'important');
+    });
+    doc._brScaled = true;
   }
 
   // 划线渲染：epub.js 的 annotations.add 静默失效（实测），改为自行包裹文本节点
@@ -1100,8 +1120,7 @@ async function initEpub() {
       'img, svg': { 'max-width': '98vw !important', 'max-height': '98vh !important',
                     'width': 'auto !important', 'height': 'auto !important', 'object-fit': 'contain' },
     });
-    rendition.themes.fontSize(fontSize + '%');
-    window._applyFormatTheme = () => paintIframes();
+    window._applyFormatTheme = () => paintIframes();   // 字号缩放由 paintIframes→scaleTextDoc 统一执行
 
     rendition.on('rendered', () => {
       hideLoading();   // 首章画出来才收动效（display 失败走 fail 也会收）
@@ -1411,8 +1430,8 @@ async function initEpub() {
     // 手机端：不显示 A±/行距，只有 小/中/大 三档智能组合
     var tierBtn = addBtn(t('tierBtn'), t('tierTitle'), () => showTierMenu());
   } else {
-    addBtn('A-', t('fontDown'), () => { fontSize = Math.max(80, fontSize - 10); rendition.themes.fontSize(fontSize + '%'); paintIframes(); schedSizeScroll(); saveFontSize(); });
-    addBtn('A+', t('fontUp'), () => { fontSize = Math.min(300, fontSize + 10); rendition.themes.fontSize(fontSize + '%'); paintIframes(); schedSizeScroll(); saveFontSize(); });
+    addBtn('A-', t('fontDown'), () => { fontSize = Math.max(80, fontSize - 10); paintIframes(); schedSizeScroll(); saveFontSize(); });
+    addBtn('A+', t('fontUp'), () => { fontSize = Math.min(300, fontSize + 10); paintIframes(); schedSizeScroll(); saveFontSize(); });
     var lhBtn = addBtn(t('lhBtn'), t('lhTitle'), () => showLineMenu());
   }
 
@@ -1497,7 +1516,6 @@ async function initEpub() {
     const [fs, lh] = textTierSpec(prefs.textTier);
     fontSize = fs;
     prefs.lineHeight = lh;
-    if (rendition) rendition.themes.fontSize(fontSize + '%');
     savePrefs();
     paintIframes(); schedSizeScroll();
   };
