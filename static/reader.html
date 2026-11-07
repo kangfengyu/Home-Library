@@ -195,7 +195,14 @@
     0%, 100% { transform:rotateY(0deg); }
     50% { transform:rotateY(-165deg); }
   }
-  @media (prefers-reduced-motion: reduce) { .load-book span { animation:none; } }
+  /* 系统开了「减弱动态效果」时不做翻页 3D 动画（手机 ROM 常默认开），改轻微呼吸闪烁——
+     加载指示是功能反馈不是装饰，静止会让人以为卡死 */
+  @media (prefers-reduced-motion: reduce) {
+    .load-book span { animation: none; opacity: .55; }
+    .load-book span:nth-child(2) { animation: none; opacity: .8; }
+    .load-txt { animation: brbreath 1.6s infinite ease-in-out; }
+  }
+  @keyframes brbreath { 0%,100% { opacity:.45; } 50% { opacity:1; } }
   .load-txt { letter-spacing:.12em; font-family:"Noto Serif SC",serif; }
 
   /* ================= 云朵浮层（待解答问题，与主页同款） ================= */
@@ -341,8 +348,6 @@ const STR = {
     fontBtn:'字体', fontTitle:'切换正文字体',
     fontDef:'默认字体', fontSans:'黑体', fontSong:'宋体', fontKai:'楷体', fontWenkai:'霞鹜文楷',
     lhBtn:'行距', lhTitle:'调整行距', lhTight:'紧凑', lhNormal:'标准', lhLoose:'宽松',
-    tierBtn:'字号', tierTitle:'字号大小',
-    sizeS:'小', sizeM:'中', sizeL:'大',
   },
   en: {
     toc:'Contents', tocTip:'Table of contents', prev:'Previous', next:'Next', fontDown:'Smaller text',
@@ -374,8 +379,6 @@ const STR = {
     fontBtn:'Font', fontTitle:'Choose body font',
     fontDef:'Default', fontSans:'Sans', fontSong:'Serif (Song)', fontKai:'Kai (script)', fontWenkai:'LXGW WenKai',
     lhBtn:'Spacing', lhTitle:'Line spacing', lhTight:'Tight', lhNormal:'Normal', lhLoose:'Loose',
-    tierBtn:'Text size', tierTitle:'Text size',
-    sizeS:'Small', sizeM:'Medium', sizeL:'Large',
   },
 };
 function t(k) { return (STR[LANG] && STR[LANG][k]) || STR.zh[k] || k; }
@@ -453,7 +456,6 @@ const prefs = {
   nav: 'h',         // h=左右翻页  v=上下滚动
   font: 'def',      // 正文字体
   lineHeight: 28,   // 行距（px）：16–60，±2 步进
-  textTier: 'm',    // 手机端字号档位：s | m | l（默认中）
 };
 function loadPrefs() {
   try {
@@ -465,8 +467,6 @@ function loadPrefs() {
     const n = parseInt(raw, 10);
     const LH_LEGACY = { tight: 24, normal: 28, loose: 34 };
     prefs.lineHeight = (n >= LH_MIN && n <= LH_MAX) ? n : (LH_LEGACY[raw] || 28);
-    const tier = localStorage.getItem('br-texttier');
-    prefs.textTier = ['s', 'm', 'l'].includes(tier) ? tier : 'm';
   } catch (e) {}
 }
 function savePrefs() {
@@ -475,7 +475,6 @@ function savePrefs() {
     localStorage.setItem('br-nav-' + book.format, prefs.nav);
     localStorage.setItem('br-font', prefs.font);
     localStorage.setItem('br-lineheight', String(prefs.lineHeight));
-    localStorage.setItem('br-texttier', prefs.textTier);
   } catch (e) {}
 }
 
@@ -498,15 +497,6 @@ const fontStack = () => (FONT_LIST.find(f => f.key === prefs.font) || FONT_LIST[
    不设 1.2em 兜底——有兜底时大字号下怎么调都卡在兜底值上（"调行距没效果"的根因），
    调多紧由用户自己定，调太密再点回来即可 */
 const LH_MIN = 16, LH_MAX = 60, LH_STEP = 2;
-
-/* 手机端字号三档：字号% + 行距px 成对组合（小/中/大），按屏宽挑一组舒适的搭配，默认中 */
-function textTierSpec(tier) {
-  const w = innerWidth;
-  const table = w < 480 ? { s: [100, 24], m: [114, 27], l: [128, 31] }
-              : w < 900 ? { s: [106, 26], m: [120, 29], l: [134, 33] }
-                        : { s: [112, 27], m: [128, 31], l: [144, 35] };
-  return table[tier] || table.m;
-}
 
 /* ---------- 移动端沉浸阅读：进入 5s 收起工具栏；点屏幕中央唤出；之后只有翻页/滑动阅读才收起 ---------- */
 /* 触屏设备经 pointer:coarse 自动启用；桌面浏览器联调可加 ?immersive=1 强制开启 */
@@ -971,14 +961,8 @@ async function initEpub() {
 
   const epub = ePub('/api/file/' + bookId, { openAs: 'epub' });
   let rendition = null, lastCfi = null, fontSize = 110;
-  // 字号记忆（br-fontsize，全局，桌面端）：上次调过的字号进书即恢复
+  // 字号记忆（br-fontsize，全局，手机/桌面同一套）：上次调过的字号进书即恢复
   try { const v = parseInt(localStorage.getItem('br-fontsize'), 10); if (v >= 80 && v <= 300) fontSize = v; } catch (e) {}
-  if (isTouch) {
-    // 手机端：字号+行距由 小/中/大 三档智能组合接管（br-fontsize 不参与）
-    const spec = textTierSpec(prefs.textTier);
-    fontSize = spec[0];
-    prefs.lineHeight = spec[1];
-  }
   const saveFontSize = () => { try { localStorage.setItem('br-fontsize', String(fontSize)); } catch (e) {} };
 
   const epubCss = (dark, rootPct = 100) =>
@@ -1426,14 +1410,9 @@ async function initEpub() {
   addBtn('◀', t('prev'), () => window._nav.prev(), true);
   addBtn('▶', t('next'), () => window._nav.next(), true);
   const fontBtn = addBtn(t('fontBtn'), t('fontTitle'), () => showFontMenu());
-  if (isTouch) {
-    // 手机端：不显示 A±/行距，只有 小/中/大 三档智能组合
-    var tierBtn = addBtn(t('tierBtn'), t('tierTitle'), () => showTierMenu());
-  } else {
-    addBtn('A-', t('fontDown'), () => { fontSize = Math.max(80, fontSize - 10); paintIframes(); schedSizeScroll(); saveFontSize(); });
-    addBtn('A+', t('fontUp'), () => { fontSize = Math.min(300, fontSize + 10); paintIframes(); schedSizeScroll(); saveFontSize(); });
-    var lhBtn = addBtn(t('lhBtn'), t('lhTitle'), () => showLineMenu());
-  }
+  addBtn('A-', t('fontDown'), () => { fontSize = Math.max(80, fontSize - 10); paintIframes(); schedSizeScroll(); saveFontSize(); });
+  addBtn('A+', t('fontUp'), () => { fontSize = Math.min(300, fontSize + 10); paintIframes(); schedSizeScroll(); saveFontSize(); });
+  const lhBtn = addBtn(t('lhBtn'), t('lhTitle'), () => showLineMenu());
 
   /* 浮层菜单通用骨架（字体/行距共用）：点按钮开合、点行回调、点浮层外关闭 */
   function attachMenu(btn, fill) {
@@ -1508,25 +1487,6 @@ async function initEpub() {
       const b = e.target.closest('.lh-btn');
       if (!b) return;
       apply(prefs.lineHeight + (b.dataset.act === 'inc' ? LH_STEP : -LH_STEP));
-    });
-  });
-
-  /* 手机端字号三档：小/中/大 = 字号% + 行距px 的成对组合（按屏宽取一组），默认中 */
-  var applyTier = function () {
-    const [fs, lh] = textTierSpec(prefs.textTier);
-    fontSize = fs;
-    prefs.lineHeight = lh;
-    savePrefs();
-    paintIframes(); schedSizeScroll();
-  };
-  const showTierMenu = attachMenu(tierBtn, (menu, close) => {
-    [['s', 'sizeS'], ['m', 'sizeM'], ['l', 'sizeL']].forEach(([key, i18n]) => {
-      const [fs, lh] = textTierSpec(key);
-      const row = document.createElement('div');
-      row.className = 'fm-row' + (prefs.textTier === key ? ' on' : '');
-      row.textContent = t(i18n) + '　' + fs + '% · ' + t('lhBtn') + ' ' + lh + 'px';
-      row.onclick = () => { prefs.textTier = key; applyTier(); close(); };
-      menu.appendChild(row);
     });
   });
 
