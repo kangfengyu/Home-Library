@@ -506,6 +506,7 @@ function immHide() {
   if (!isTouch || document.body.classList.contains('imm-off')) return;
   document.body.classList.add('imm-off');
   clearTimeout(imm.timer);
+  window._closeOpenMenus && window._closeOpenMenus();   // 工具栏收起时一并收掉字体/行距子菜单
   immReflow();
 }
 function immShow() {
@@ -1414,19 +1415,31 @@ async function initEpub() {
   addBtn('A+', t('fontUp'), () => { fontSize = Math.min(300, fontSize + 10); paintIframes(); schedSizeScroll(); saveFontSize(); });
   const lhBtn = addBtn(t('lhBtn'), t('lhTitle'), () => showLineMenu());
 
-  /* 浮层菜单通用骨架（字体/行距共用）：点按钮开合、点行回调、点浮层外关闭 */
+  /* 浮层菜单通用骨架（字体/行距共用）：点按钮开合、点行回调、点浮层外关闭；
+     同时只开一个（打开新菜单先收旧的）；位置钳在视口内（按钮贴左缘时菜单不被屏幕裁掉） */
+  const openMenuClosers = [];
+  window._closeOpenMenus = () => { while (openMenuClosers.length) openMenuClosers[0](); };
   function attachMenu(btn, fill) {
     let menu = null;
-    const close = () => { if (menu) { menu.remove(); menu = null; } };
+    const close = () => {
+      if (!menu) return;
+      menu.remove(); menu = null;
+      const i = openMenuClosers.indexOf(close);
+      if (i >= 0) openMenuClosers.splice(i, 1);
+    };
     return () => {
-      if (menu) return close();
+      const wasOpen = !!menu;
+      window._closeOpenMenus();   // 收掉其他已开的菜单
+      if (wasOpen) return;        // 本来就开着 → 只做关闭
       menu = document.createElement('div');
       menu.id = 'fontMenu';   // 复用同一套浮层样式
       fill(menu, close);
       document.body.appendChild(menu);
       const r = btn.getBoundingClientRect();
       menu.style.top = Math.max(8, Math.min(r.bottom + 8, innerHeight - menu.offsetHeight - 12)) + 'px';
-      menu.style.right = Math.max(8, innerWidth - r.right) + 'px';
+      // 默认右对齐按钮；按钮滚到最左时右对齐会把菜单顶出左缘 → 钳回屏内
+      menu.style.right = Math.max(8, Math.min(innerWidth - r.right, innerWidth - menu.offsetWidth - 8)) + 'px';
+      openMenuClosers.push(close);
       // 书内 iframe 的点击不冒泡到父页，靠下一次交互自然收口
       setTimeout(() => {
         document.addEventListener('click', function fmClose(e) {
